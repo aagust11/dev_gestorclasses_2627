@@ -1,0 +1,6 @@
+{
+  "name": "Gestor de Classes",
+  "description": "Gestor d'horaris de classes, control d'assistència, gestió de competències, criteris d'avaluació i plànols de l'aula.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
