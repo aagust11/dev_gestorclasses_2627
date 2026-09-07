@@ -1,3 +1,4 @@
+import StudentName from './StudentName';
 import CurriculumEditor, { CurriculumTarget } from './CurriculumEditor';
 import DetailPage from './DetailPage';
 import SubjectGradingSettings, { validateSubjectGrading } from './SubjectGradingSettings';
@@ -720,7 +721,7 @@ export default function ConfiguracioView({
                         }
                         return activeSub.students.map((st) => (
                           <div key={st.id} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-100 shadow-sm hover:border-slate-250 transition-colors">
-                            <span className="font-semibold text-slate-700 truncate mr-2">{st.name}</span>
+                            <span className="font-semibold text-slate-700 truncate mr-2"><StudentName state={state} student={st}/></span>
                             <button
                               type="button"
                               onClick={() => handleRemoveStudentFromSubject(reimportSubId, st.id)}

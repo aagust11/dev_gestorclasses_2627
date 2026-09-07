@@ -226,7 +226,7 @@ export interface TermGradesRecord {
 }
 
 export interface AppState {
-  studentProfiles?: Record<string, {notes?: string; psi?: string}>;
+  studentProfiles?: Record<string, {notes?: string; psi?: string; supportMeasures?: string; additionalComments?: string}>;
   periodComments?: Record<string, Record<string, Record<string, string>>>; // subject → period → student; shared by all methods
   config: {
     startDate: string; // YYYY-MM-DD

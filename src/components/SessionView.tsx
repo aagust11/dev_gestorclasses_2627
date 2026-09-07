@@ -1,3 +1,4 @@
+import StudentName from './StudentName';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -634,7 +635,7 @@ export default function SessionView({
                                 {student.name.substring(0, 2).toUpperCase()}
                               </span>
                               <span className="font-bold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]" title={student.name}>
-                                {student.name}
+                                <StudentName state={state} student={student}/>
                               </span>
                             </div>
                           </td>

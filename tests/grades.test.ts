@@ -278,10 +278,30 @@ test('La nota manual i la calculada conviuen i les propostes anuals tenen fonts 
  assert.ok(JSON.stringify(reportSections(report)).includes('manual; calculada: 4.00 AE'));
 });
 
-test('Els informes Word i PDF es generen i el PSI requereix inclusió explícita',async()=>{
+test('Els informes Word i PDF es generen sense contingut PSI',async()=>{
  const state=getInitialState();state.subjects=[sub()];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.studentProfiles={u:{psi:'PSI_RESERVAT',notes:'Observació: progrés i expressió.'}};
- const report=buildStudentReport(state,'u');assert.equal(report.psi,undefined);assert.equal(buildStudentReport(state,'u',true).psi,'PSI_RESERVAT');
+ const report=buildStudentReport(state,'u');assert.ok(!('psi' in report));assert.ok(!JSON.stringify(report).includes('PSI_RESERVAT'));
  const word=await buildStudentWord(report),pdf=await buildStudentPdf(report);
  assert.equal(new TextDecoder().decode((await word.arrayBuffer()).slice(0,2)),'PK');assert.equal(new TextDecoder().decode((await pdf.arrayBuffer()).slice(0,5)),'%PDF-');
  assert.ok(word.size>1000);assert.ok(pdf.size>1000);
+});
+
+
+import {hasStudentSupport} from '../src/utils/studentProfile';
+import StudentName from '../src/components/StudentName';
+test('La marca psi detecta PSI o mesures, ignora espais i comentaris sols i no revela contingut',()=>{
+ const state=getInitialState();state.subjects=[sub()];state.studentProfiles={u:{psi:'SECRET_PSI'}};
+ assert.equal(hasStudentSupport(state,'u'),true);
+ const html=renderToStaticMarkup(createElement(StudentName,{state,student:sub().students[0]}));assert.ok(html.includes('ψ'));assert.ok(!html.includes('SECRET_PSI'));
+ state.studentProfiles.u={supportMeasures:'Temps addicional'};assert.equal(hasStudentSupport(state,'u'),true);
+ state.studentProfiles.u={psi:'   ',supportMeasures:'\n',additionalComments:'Seguiment'};assert.equal(hasStudentSupport(state,'u'),false);
+ assert.equal(hasStudentSupport(state,'missing'),false);
+});
+
+test('Les mesures i els comentaris addicionals persisteixen i entren als informes sense el PSI',()=>{
+ const state=getInitialState();state.subjects=[sub()];state.studentProfiles={u:{psi:'SECRET_PSI',supportMeasures:'Temps addicional',additionalComments:'Progrés positiu'}};
+ const report=buildStudentReport(state,'u');assert.equal(report.supportMeasures,'Temps addicional');assert.equal(report.additionalComments,'Progrés positiu');assert.ok(!JSON.stringify(report).includes('SECRET_PSI'));
+ const map=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{setItem:(k:string,v:string)=>map.set(k,v),getItem:(k:string)=>map.get(k)}});
+ saveStateToLocalStorage(state);assert.deepEqual(loadStateFromLocalStorage().studentProfiles,state.studentProfiles);
+ state.studentProfiles.u.supportMeasures='  ';assert.equal(buildStudentReport(state,'u').supportMeasures,'');
 });

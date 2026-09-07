@@ -5,7 +5,7 @@ export async function buildStudentWord(report:StudentReport) {
   const {Document,Paragraph,TextRun,Table,TableRow,TableCell,WidthType,HeadingLevel,Packer}=await import('docx');
   const paragraph=(text:string)=>new Paragraph({children:text.split('\n').flatMap((line,i)=>[new TextRun({text:line,break:i?1:0})]),spacing:{after:100}});
   const children:any[]=[new Paragraph({text:`Informe de l’alumne · ${report.name}`,heading:HeadingLevel.TITLE}),paragraph(report.subjects.join(' · ')),paragraph(`Data: ${new Date().toLocaleDateString('ca-ES')}`),paragraph(report.notes),paragraph(summary(report))];
-  if(report.psi!==undefined)children.push(new Paragraph({text:'PSI',heading:HeadingLevel.HEADING_1}),paragraph(report.psi||'Sense contingut'));
+  for(const [title,text] of [['Mesures de suport',report.supportMeasures],['Comentaris addicionals',report.additionalComments]])if(text)children.push(new Paragraph({text:title,heading:HeadingLevel.HEADING_1}),paragraph(text));
   for(const section of reportSections(report)){
     children.push(new Paragraph({text:section.title,heading:HeadingLevel.HEADING_1}));
     if(!section.rows.length){children.push(paragraph('Sense registres'));continue;}
@@ -18,7 +18,7 @@ export async function buildStudentPdf(report:StudentReport) {
   const pdf=new jsPDF();let y=18;
   const paragraph=(text:string,size=10)=>{pdf.setFontSize(size);for(const line of pdf.splitTextToSize(text||' ',174)){if(y>277){pdf.addPage();y=18;}pdf.text(line,18,y);y+=size*.45+1;}y+=3;};
   paragraph(`Informe de l’alumne · ${report.name}`,17);paragraph(report.subjects.join(' · '));paragraph(`Data: ${new Date().toLocaleDateString('ca-ES')}`);paragraph(report.notes);paragraph(summary(report));
-  if(report.psi!==undefined){paragraph('PSI',13);paragraph(report.psi||'Sense contingut');}
+  for(const [title,text] of [['Mesures de suport',report.supportMeasures],['Comentaris addicionals',report.additionalComments]])if(text){paragraph(title,13);paragraph(text);}
   for(const section of reportSections(report)){
     if(y>245){pdf.addPage();y=18;}
     paragraph(section.title,12);

@@ -22,3 +22,8 @@ export function studentSessionHistory(state:AppState,studentId:string,periodId='
     .flatMap(log=>log.attendance[studentId]?[{...log,studentLog:log.attendance[studentId]}]:[])
     .sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id));
 }
+
+export function hasStudentSupport(state:AppState,studentId:string):boolean {
+  const profile=state.studentProfiles?.[studentId];
+  return !!(profile?.psi?.trim()||profile?.supportMeasures?.trim());
+}

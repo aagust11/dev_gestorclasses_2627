@@ -1,3 +1,4 @@
+import StudentName from './StudentName';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -584,7 +585,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
                       return (
                         <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="py-3 px-6 font-bold text-slate-800">
-                            {student.name}
+                            <StudentName state={state} student={student}/>
                           </td>
                           <td className="py-3 px-6 text-center text-slate-500">
                             {attendanceRate !== null ? totalSessions : ''}

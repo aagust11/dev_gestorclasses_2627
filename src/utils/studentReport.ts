@@ -5,7 +5,7 @@ export const reportMethodNames={mean:'Mitjana',median:'Mediana',mode:'Moda'};
 export type ReportGrade={score?:number|null;qual?:string;isManual?:boolean};
 export const gradeText=(g?:ReportGrade)=>g?.score==null?'Pendent':`${g.score.toFixed(2)} ${g.qual||''}`.trim();
 export const comparedGradeText=(g?:ReportGrade,auto?:ReportGrade)=>`${gradeText(g)}${g?.isManual?` (manual; calculada: ${gradeText(auto)})`:''}`;
-export function buildStudentReport(state:AppState,studentId:string,includePsi=false) {
+export function buildStudentReport(state:AppState,studentId:string) {
   const subjects=state.subjects.filter(s=>!s.isGeneral&&s.students.some(st=>st.id===studentId));
   const student=subjects.flatMap(s=>s.students).find(st=>st.id===studentId);
   if(!student)throw new Error('Alumne no disponible');
@@ -17,7 +17,7 @@ export function buildStudentReport(state:AppState,studentId:string,includePsi=fa
     return {subject,period,actual,automatic,competencies,comment:state.periodComments?.[subject.id]?.[period.id]?.[studentId]||''};
   }));
   const history=studentSessionHistory(state,studentId);
-  return {name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',psi:includePsi?state.studentProfiles?.[studentId]?.psi:undefined,evaluations,history,
+  return {name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
     totals:{absent:history.filter(l=>l.studentLog.status==='absent').length,late:history.filter(l=>['late10','lateMore10'].includes(l.studentLog.status)).length,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)}};
 }
 export type StudentReport=ReturnType<typeof buildStudentReport>;

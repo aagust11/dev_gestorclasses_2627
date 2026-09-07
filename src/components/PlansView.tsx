@@ -1,3 +1,4 @@
+import StudentName from './StudentName';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -536,7 +537,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                           : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                       }`}
                     >
-                      <span className="truncate max-w-[120px]">{student.name}</span>
+                      <span className="truncate max-w-[120px]"><StudentName state={state} student={student}/></span>
                       <span className="text-[9px] font-extrabold text-slate-400 uppercase">Seure</span>
                     </button>
                   );
@@ -819,7 +820,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                           }}
                                           className="w-full text-left font-bold text-slate-700 hover:bg-slate-55 text-[10px] p-1.5 block truncate cursor-pointer"
                                         >
-                                          {st.name} {isAlreadySeated ? '🔄 (Moure)' : ''}
+                                          <StudentName state={state} student={st}/> {isAlreadySeated ? '🔄 (Moure)' : ''}
                                         </button>
                                       );
                                     })}
@@ -862,7 +863,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                     )}
                                   </div>
                                   <p className="text-[10.5px] font-bold text-slate-800 tracking-tight leading-tight break-all sm:break-normal line-clamp-2 px-0.5 my-auto font-sans">
-                                    {seatedStudent.name}
+                                    <StudentName state={state} student={seatedStudent}/>
                                   </p>
                                   {isEditMode ? (
                                     <button 

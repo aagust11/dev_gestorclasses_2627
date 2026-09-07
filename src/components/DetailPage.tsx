@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { ArrowLeft } from 'lucide-react';
 
-export default function DetailPage({title,subtitle,onBack,children,actions}:{title:string;subtitle?:string;onBack:()=>void;children:React.ReactNode;actions?:React.ReactNode}) {
+export default function DetailPage({title,subtitle,onBack,children,actions}:{title:React.ReactNode;subtitle?:string;onBack:()=>void;children:React.ReactNode;actions?:React.ReactNode}) {
   const heading=useRef<HTMLHeadingElement>(null);
   useEffect(()=>{ window.scrollTo(0,0); heading.current?.focus(); },[]);
   return <section className="detail-page space-y-4">
