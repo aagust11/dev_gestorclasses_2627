@@ -27,7 +27,7 @@ export default function Sidebar({
     { id: 'horari', label: 'Horari', icon: Calendar, disabled: false },
     { id: 'classes', label: 'Assignatures', icon: BookOpen, disabled: false },
     { id: 'activitats', label: 'Activitats', icon: CheckSquare, disabled: false },
-    { id: 'qualificacions', label: 'Qualificacions', icon: Award, disabled: false, badge: 'NOU' },
+    { id: 'qualificacions', label: 'Qualificacions', icon: Award, disabled: false },
     { id: 'rendiment', label: 'Rendiment i Informes', icon: TrendingUp, disabled: false },
     { id: 'planols', label: 'Plànols', icon: Map, disabled: false },
     { id: 'configuracio', label: 'Configuració', icon: Settings, disabled: false },

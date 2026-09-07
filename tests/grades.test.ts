@@ -169,3 +169,20 @@ test('Editar una activitat antiga preserva les notes globals dels criteris origi
   assert.equal(updated.grades.u.comment,'Conservar');
   assert.equal(original.grades.u.criteriaGrades,undefined);
 });
+
+
+test('Els comentaris del període persisteixen separats per assignatura i període i s’exporten amb qualsevol mètode',()=>{
+  const state=getInitialState();state.subjects=[sub()];
+  state.periodComments={s:{t1:{u:'Bon progrés'},t2:{u:'Cal practicar'},annual:{u:'Comentari de curs'}},other:{t1:{u:'Una altra assignatura'}}};
+  const map=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{setItem:(k:string,v:string)=>map.set(k,v),getItem:(k:string)=>map.get(k)}});
+  saveStateToLocalStorage(state);const loaded=loadStateFromLocalStorage();
+  assert.deepEqual(loaded.periodComments,state.periodComments);
+  for(const method of ['mean','median','mode'] as const){
+    const grades=calculateCompetencialTermGrades(sub(),[act({grades:numericGrade(8)})],comps,criteria,undefined,method);
+    const wb=buildTermGradesWorkbook(sub(),'T1',criteria,comps,grades,loaded.periodComments.s.t1);
+    const rows=XLSX.utils.sheet_to_json<any[]>(wb.Sheets.Qualificacions,{header:1});
+    assert.equal(rows[2].at(-1),'Comentari del període');assert.equal(rows[3].at(-1),'Bon progrés');
+  }
+  const cleared=buildTermGradesWorkbook(sub(),'T1',criteria,comps,{},loaded.periodComments.s.t1);
+  assert.equal(XLSX.utils.sheet_to_json<any[]>(cleared.Sheets.Qualificacions,{header:1})[3].at(-1),'Bon progrés');
+});

@@ -795,7 +795,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
                   <section className="space-y-2">
                     <label className="ds-field" htmlFor="criterion-to-add">Afegir criteri d’avaluació</label>
-                    <div className="flex gap-2"><select id="criterion-to-add" className="flex-1" value={criterionToAdd} onChange={e=>setCriterionToAdd(e.target.value)}><option value="">Selecciona un criteri…</option>{relevantCriteria.map(cr=><option key={cr.id} value={cr.id}>{cr.shortLabel || cr.key} · {cr.description}</option>)}</select><button type="button" className="ds-button ds-primary" disabled={!criterionToAdd} onClick={handleAddCriterion}>Afegir</button></div>
+                    <div className="flex gap-2"><select id="criterion-to-add" className="flex-1" value={criterionToAdd} onChange={e=>setCriterionToAdd(e.target.value)}><option value="">Selecciona un criteri…</option>{relevantCriteria.map(cr=><option key={cr.id} value={cr.id}>{cr.key} · {cr.description}</option>)}</select><button type="button" className="ds-button ds-primary" disabled={!criterionToAdd} onClick={handleAddCriterion}>Afegir</button></div>
                     <p className="text-sm text-slate-500">Pots afegir el mateix criteri diverses vegades per avaluar aspectes diferents. Cada entrada té la seva pròpia nota i pes.</p>
                     {!relevantCriteria.length && <p className="text-amber-700 text-sm">Crea primer els criteris a Configuració → Competències.</p>}
                   </section>
@@ -820,16 +820,15 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                             <div key={cid} className="p-2 bg-white border border-slate-200 rounded-lg text-xs space-y-1.5">
                               <div className="flex items-center justify-between gap-2">
                                 <span className="font-black font-mono text-indigo-700 text-[10.5px]">
-                                  {cr?.shortLabel || cr?.key || 'CA'}
+                                  {cr?.key || 'CA'}
                                 </span>
                                 <span className="text-[10px] text-slate-500 truncate flex-1 text-right" title={cr?.description}>
                                   {cr?.description}
                                 </span>
                               </div>
 
-                              <label className="ds-field">Text per identificar aquest criteri quan avalues<input value={criteriaCustomLabels[cid] ?? cr?.shortLabel ?? cr?.key ?? ''} onChange={e => setCriteriaCustomLabels({...criteriaCustomLabels, [cid]:e.target.value})} placeholder="Ex.: P1-CA1 · Expressió oral" /></label>
+                              <label className="ds-field">Text per identificar aquest criteri quan avalues<input value={criteriaCustomLabels[cid] ?? cr?.key ?? ''} onChange={e => setCriteriaCustomLabels({...criteriaCustomLabels, [cid]:e.target.value})} placeholder="Ex.: P1-CA1 · Expressió oral" /></label>
                               <div className="flex gap-2"><button type="button" className="ds-button text-rose-700" onClick={()=>setSelectedCritIds(selectedCritIds.filter(id=>id!==cid))}>Treure de l’activitat</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
-                              <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-2"><legend className="font-semibold text-sm mb-2">Què significa cada nivell en aquest aspecte?</legend>{QUAL_ORDER.map(q=><label className="ds-field" key={q}><span className={`grade-badge ${QUAL_COLORS[q].badge}`}>{q}</span><textarea rows={2} value={criteriaRubrics[cid]?.[q] ?? cr?.rubric?.[q] ?? ''} placeholder={`Descripció de ${q}…`} onChange={e=>setCriteriaRubrics({...criteriaRubrics,[cid]:{...criteriaRubrics[cid],[q]:e.target.value}})}/></label>)}</fieldset>
                               <div className="grid grid-cols-3 gap-1.5 items-center">
                                 <div>
                                   <label className="text-[8.5px] font-bold text-slate-400 block uppercase">Pes</label>
@@ -880,6 +879,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                                   )}
                                 </div>
                               </div>
+                              <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-2"><legend className="font-semibold text-sm mb-2">Què significa cada nivell en aquest aspecte?</legend>{QUAL_ORDER.map(q=><label className="ds-field" key={q}><span className={`grade-badge ${QUAL_COLORS[q].badge}`}>{q}</span><textarea rows={2} value={criteriaRubrics[cid]?.[q] ?? cr?.rubric?.[q] ?? ''} placeholder={`Descripció de ${q}…`} onChange={e=>setCriteriaRubrics({...criteriaRubrics,[cid]:{...criteriaRubrics[cid],[q]:e.target.value}})}/></label>)}</fieldset>
                             </div>
                           );
                         })}

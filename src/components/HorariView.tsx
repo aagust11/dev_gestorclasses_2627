@@ -393,18 +393,6 @@ export default function HorariView({
         </table>
       </div>
       
-      {/* Visual legend / guide */}
-      <div className="bg-slate-50 border border-slate-200 p-4.5 rounded-2xl flex items-start gap-3">
-        <Info className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" />
-        <div>
-          <h4 className="text-xs font-bold text-slate-800">Guia d'Ús d'DocentSuite</h4>
-          <p className="text-[11px] text-slate-500 leading-relaxed mt-1">
-            • <b>Registres de classe:</b> Cliqueu sobre qualsevol targeta d'assignatura per gestionar el registre d'aquella sessió diària, posar faltes d'assistència, registrar retards o redactar incidències.<br />
-            • <b>Substitucions puntuals:</b> Les substitucions i canvis de franja horària es gestionen centralitzadament des de la pestanya <b>Substitucions</b> a <b>Configuració</b>.<br />
-            • <b>Heredabilitat:</b> Els grups fills hereden automàticament els alumnes, ràtio, i les competències d'avaluació definides en el seu grup mare principal.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

@@ -72,3 +72,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .detail-page form.activity-editor-grid { grid-template-columns:1fr; }
   .grade-table-wrap { max-height:75vh; }
 }
+
+/* Keep all aspect rows and row-spanning cells in one student band. */
+.grade-table tbody.activity-student-group.student-even { background: #e8eff8; }
+.grade-table tbody.activity-student-group.student-odd { background: #fff; }
+.detail-page .grade-table tbody.activity-student-group > tr { background: inherit; }

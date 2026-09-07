@@ -285,16 +285,16 @@ function workbook(title: string, headers: string[], rows: (string|number|null)[]
 const exportNumber=(n:unknown)=>valid(n)?round(n):null;
 const safeName=(s:string)=>s.replace(/[^a-zA-Z0-9À-ÿ_-]/g,'_').slice(0,90);
 
-export function buildTermGradesWorkbook(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>) {
+export function buildTermGradesWorkbook(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}) {
   const numeric=subject.evaluationType==='numeric';
   const headers=['ID Alumne','Nom Alumne'];
   if(numeric)(subject.numericItems||[]).forEach(i=>headers.push(`${i.code} · ${i.name} (${i.weight}%)`));
   else {
-    criteria.forEach(c=>headers.push(`CA ${c.shortLabel||c.key} /4`,`CA ${c.shortLabel||c.key} · Qual.`));
+    criteria.forEach(c=>headers.push(`CA ${c.key} /4`,`CA ${c.key} · Qual.`));
     competencies.forEach(c=>headers.push(`CE ${c.key} /4`,`CE ${c.key} · Qual.`));
     headers.push('CE suspeses','NA pel límit de CE');
   }
-  headers.push('Mitjana total','Mediana total','Moda total',`Nota final /${numeric?10:4}`,'Qualificació final','Nota final manual');
+  headers.push('Mitjana total','Mediana total','Moda total',`Nota final /${numeric?10:4}`,'Qualificació final','Nota final manual','Comentari del període');
   const rows=subject.students.map(st=>{
     const g=grades[st.id],row:(string|number|null)[]=[st.id,st.name];
     if(numeric)(subject.numericItems||[]).forEach(i=>row.push(exportNumber(g?.items?.[i.id]?.score)));
@@ -303,19 +303,19 @@ export function buildTermGradesWorkbook(subject: Subject, periodName: string, cr
       competencies.forEach(c=>row.push(exportNumber(g?.competencies?.[c.id]?.score),g?.competencies?.[c.id]?.qual||''));
       row.push(g?.finalGrade.failedCECount??null,g?.finalGrade.autoFailed?'Sí':'');
     }
-    row.push(exportNumber(g?.metrics?.mean),exportNumber(g?.metrics?.median),exportNumber(g?.metrics?.mode),exportNumber(g?.finalGrade.score),g?.finalGrade.qual||'',g?.finalGrade.isManual?'Sí':'');
+    row.push(exportNumber(g?.metrics?.mean),exportNumber(g?.metrics?.median),exportNumber(g?.metrics?.mode),exportNumber(g?.finalGrade.score),g?.finalGrade.qual||'',g?.finalGrade.isManual?'Sí':'',comments[st.id]||'');
     return row;
   });
   return workbook(`${subject.name} · ${periodName}`,headers,rows,'Qualificacions');
 }
-export function exportTermGradesToExcel(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>) {
-  XLSX.writeFile(buildTermGradesWorkbook(subject,periodName,criteria,competencies,grades),`Qualificacions_${safeName(subject.name)}_${safeName(periodName)}.xlsx`);
+export function exportTermGradesToExcel(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}) {
+  XLSX.writeFile(buildTermGradesWorkbook(subject,periodName,criteria,competencies,grades,comments),`Qualificacions_${safeName(subject.name)}_${safeName(periodName)}.xlsx`);
 }
 export function buildActivitiesWorkbook(subject:Subject,activities:CurricularActivity[],criteria:EvalCriterion[],students:Subject['students']) {
   const settings=getCompSettings(subject), headers=['ID Alumne','Nom Alumne'];
   activities.forEach(a=>{
     (a.criteriaIds||[]).forEach(id=>{
-      const c=criteria.find(c=>c.id===sourceCriterionId(a,id)),label=a.criteriaCustomLabels?.[id]||c?.shortLabel||c?.key||id;
+      const c=criteria.find(c=>c.id===sourceCriterionId(a,id)),label=a.criteriaCustomLabels?.[id]||c?.key||id;
       headers.push(`${a.code} · ${label} · Puntuació`,`${a.code} · ${label} · Màxim`,`${a.code} · ${label} /4`,`${a.code} · ${label} · Qual.`);
     });
     headers.push(`${a.code} · Global /${subject.evaluationType==='numeric'?10:4}`,`${a.code} · Qual.`,`${a.code} · Comentari`);

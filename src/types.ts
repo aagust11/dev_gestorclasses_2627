@@ -225,6 +225,7 @@ export interface TermGradesRecord {
 }
 
 export interface AppState {
+  periodComments?: Record<string, Record<string, Record<string, string>>>; // subject → period → student; shared by all methods
   config: {
     startDate: string; // YYYY-MM-DD
     endDate: string;   // YYYY-MM-DD
