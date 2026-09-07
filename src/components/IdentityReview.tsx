@@ -1,0 +1,24 @@
+import React,{useState} from 'react';
+import {AppState} from '../types';
+import {identityConflicts,newStudent,resolveIdentityConflict,mergeStudents} from '../utils/studentIdentity';
+
+export function IdentityReview({state,onResolve}:{state:AppState;onResolve:(s:AppState)=>void}) {
+  const conflict=identityConflicts(state)[0];
+  const [people]=useState(()=>Object.fromEntries(conflict.occurrences.map((o,i)=>{const p=newStudent(o.name);return [p.id,p];})));
+  const ids=Object.keys(people);
+  const [assignments,setAssignments]=useState(()=>Object.fromEntries(conflict.occurrences.map((o,i)=>[`${o.subjectId}:${o.index}`,ids[i]])));
+  const [owners,setOwners]=useState<Record<string,string>>({});
+  const [profileOwner,setProfileOwner]=useState('');
+  const [error,setError]=useState('');
+  const apply=()=>{try{onResolve(resolveIdentityConflict(state,conflict.id,assignments,people,owners,profileOwner));}catch(e){setError(String(e.message));}};
+  return <section className="ds-panel space-y-4"><h2 className="font-bold text-xl text-rose-800">Revisió d’identitats necessària</h2><p>Un identificador antic correspon a més d’un alumne o a files duplicades. Revisa cada fila abans de continuar. Les dades originals es conserven en una còpia recuperable.</p><p className="text-sm">Si dues files són de la mateixa persona, tria la mateixa identitat. No es dedueix la identitat a partir del nom.</p><table className="grade-table"><thead><tr><th>Assignatura</th><th>Nom original</th><th>Persona correcta</th></tr></thead><tbody>{conflict.occurrences.map((o,i)=><tr key={i}><td>{state.subjects.find(s=>s.id===o.subjectId)?.name}</td><td>{o.name}</td><td><select value={assignments[`${o.subjectId}:${o.index}`]} onChange={e=>setAssignments({...assignments,[`${o.subjectId}:${o.index}`]:e.target.value})}>{ids.map((id,j)=><option key={id} value={id}>{j+1} · {people[id].name}</option>)}</select></td></tr>)}</tbody></table>
+  {[...new Set(conflict.occurrences.map(o=>o.subjectId))].filter(sid=>conflict.occurrences.filter(o=>o.subjectId===sid).length>1).map(sid=><label className="ds-field" key={sid}>A qui corresponen les notes, sessions i comentaris antics de {state.subjects.find(s=>s.id===sid)?.name}?<select value={owners[sid]||''} onChange={e=>setOwners({...owners,[sid]:e.target.value})}><option value="">Selecciona el destinatari</option>{[...new Set(conflict.occurrences.filter(o=>o.subjectId===sid).map(o=>assignments[`${sid}:${o.index}`]))].map(id=><option key={id} value={id}>{ids.indexOf(id)+1} · {people[id].name}</option>)}</select></label>)}
+  {state.studentProfiles?.[conflict.id]&&<label className="ds-field">Destinatari de la informació personal, PSI i mesures antics<select value={profileOwner} onChange={e=>setProfileOwner(e.target.value)}><option value="">Conservar sense atribuir a cap alumne (arxivat al JSON)</option>{[...new Set(Object.values(assignments))].map(id=><option key={id} value={id}>{ids.indexOf(id)+1} · {people[id].name}</option>)}</select></label>}
+  <p role="alert" className="text-rose-700">{error}</p><button className="ds-button" disabled={[...new Set(conflict.occurrences.map(o=>o.subjectId))].some(sid=>conflict.occurrences.filter(o=>o.subjectId===sid).length>1&&!owners[sid])} onClick={apply}>Confirmar assignació i continuar</button></section>;
+}
+export function IdentityMerge({state,onChange}:{state:AppState;onChange:(s:AppState)=>void}){
+  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[error,setError]=useState('');
+  const students=Object.values(state.studentRegistry||{}).sort((a,b)=>a.name.localeCompare(b.name,'ca'));
+  const label=(id:string)=>{const st=state.studentRegistry?.[id];return `${st?.name} · ${state.subjects.filter(s=>s.students.some(st=>st.id===id)).map(s=>s.name).join(', ')||'Sense matrícula'} · ${id.slice(-8)}`;};
+  return <details className="ds-panel"><summary className="font-semibold cursor-pointer">Unificar dues fitxes de la mateixa persona</summary><p className="text-sm my-3">Fes-ho només després de comprovar la identitat. Es traslladen les matrícules, notes, sessions, comentaris i plànols. Si hi ha dades incompatibles, la fusió es bloqueja.</p><div className="flex gap-3 flex-wrap">{[[from,setFrom,'Fitxa d’origen'],[to,setTo,'Identitat que es conserva']].map(([value,set,labelText]:any)=><label className="ds-field" key={labelText}>{labelText}<select value={value} onChange={e=>set(e.target.value)}><option value="">Selecciona…</option>{students.map(st=><option key={st.id} value={st.id}>{label(st.id)}</option>)}</select></label>)}<button className="ds-button" disabled={!from||!to||from===to} onClick={()=>{if(!confirm(`Confirmes que aquestes dues fitxes són de la mateixa persona?\n${label(from)}\n${label(to)}`))return;try{const next=mergeStudents(state,from,to);onChange(next);setFrom('');setTo('');setError('');}catch(e){setError(e.message);}}}>Unificar amb còpia prèvia</button></div><p role="alert" className="text-rose-700">{error}</p></details>;
+}

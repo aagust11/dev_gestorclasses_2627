@@ -8,7 +8,7 @@ export const gradeText=(g?:ReportGrade)=>g?.score==null?'Pendent':`${g.score.toF
 export const comparedGradeText=(g?:ReportGrade,auto?:ReportGrade)=>`${gradeText(g)}${g?.isManual?` (manual; calculada: ${gradeText(auto)})`:''}`;
 export function buildStudentReport(state:AppState,studentId:string) {
   const subjects=state.subjects.filter(s=>!s.isGeneral&&s.students.some(st=>st.id===studentId));
-  const student=subjects.flatMap(s=>s.students).find(st=>st.id===studentId);
+  const student=state.studentRegistry?.[studentId]||subjects.flatMap(s=>s.students).find(st=>st.id===studentId);
   if(!student)throw new Error('Alumne no disponible');
   const periods=[...state.config.terms.map(t=>({id:t.id,name:t.name})),{id:'annual',name:'Curs complet'}];
   const evaluations=subjects.filter(s=>!s.isParent).flatMap(subject=>periods.map(period=>{

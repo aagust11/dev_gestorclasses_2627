@@ -1,3 +1,4 @@
+import StudentImportReview from './StudentImportReview';
 import StudentName from './StudentName';
 import CurriculumEditor, { CurriculumTarget } from './CurriculumEditor';
 import DetailPage from './DetailPage';
@@ -314,11 +315,14 @@ export default function ConfiguracioView({
   const [editIsParent, setEditIsParent] = useState(false);
   const [editParentId, setEditParentId] = useState('');
 
+  const [importReview,setImportReview]=useState<{names:string[];resolve:(students:Student[]|null)=>void}|null>(null);
+  const chooseStudents=(names:string[])=>new Promise<Student[]|null>(resolve=>setImportReview({names,resolve}));
+  const addToSubjects=(students:Student[],ids:string[])=>onChangeState({...state,subjects:state.subjects.map(s=>ids.includes(s.id)?{...s,students:[...s.students,...students.filter((st,i,a)=>!s.students.some(x=>x.id===st.id)&&a.findIndex(x=>x.id===st.id)===i)]}:s)});
   // Simultaneous multi-subject assignment state
   const [bulkAssignStudentsText, setBulkAssignStudentsText] = useState('');
   const [bulkAssignSelectedSubIds, setBulkAssignSelectedSubIds] = useState<string[]>([]);
 
-  const handleExecuteBulkMultiAssign = (e: React.FormEvent) => {
+  const handleExecuteBulkMultiAssign = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bulkAssignStudentsText.trim() || bulkAssignSelectedSubIds.length === 0) {
       alert('Siusplau, introduïu alumnes i seleccioneu almenys una assignatura.');
@@ -328,28 +332,8 @@ export default function ConfiguracioView({
     const inputNames = bulkAssignStudentsText.split(/[\r\n;]+/).map(n => n.trim()).filter(Boolean);
     if (inputNames.length === 0) return;
 
-    const nextSubjects = state.subjects.map(s => {
-      if (bulkAssignSelectedSubIds.includes(s.id)) {
-        const currentNames = s.students.map(st => st.name.toLowerCase().trim());
-        const newNames = inputNames.filter(name => !currentNames.includes(name.toLowerCase().trim()));
-        
-        const addedStudents: Student[] = newNames.map((name, i) => ({
-          id: `stud_${Date.now()}_bulk_${i}`,
-          name
-        }));
-
-        return {
-          ...s,
-          students: [...s.students, ...addedStudents]
-        };
-      }
-      return s;
-    });
-
-    onChangeState({
-      ...state,
-      subjects: nextSubjects
-    });
+    const students=await chooseStudents(inputNames);if(!students)return;
+    addToSubjects(students,bulkAssignSelectedSubIds);
 
     setBulkAssignStudentsText('');
     setBulkAssignSelectedSubIds([]);
@@ -395,20 +379,14 @@ export default function ConfiguracioView({
     setEditingSubject(null);
   };
 
-  const handleCreateSubject = (e: React.FormEvent) => {
+  const handleCreateSubject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subName) return;
 
-    // Parse massive pupils list
-    const parsedStudents: Student[] = [];
-    if (!subIsGeneral && !subIsParent && subBulkStudents.trim()) {
-      const names = subBulkStudents.split(/[\r\n]+/).map(n => n.trim()).filter(Boolean);
-      names.forEach((name, i) => {
-        parsedStudents.push({
-          id: `stud_${Date.now()}_${i}`,
-          name
-        });
-      });
+    let parsedStudents:Student[]=[];
+    if(!subIsGeneral&&!subIsParent&&subBulkStudents.trim()){
+      const chosen=await chooseStudents(subBulkStudents.split(/[\r\n]+/).map(n=>n.trim()).filter(Boolean));
+      if(!chosen)return;parsedStudents=chosen.filter((st,i,a)=>a.findIndex(x=>x.id===st.id)===i);
     }
 
     const newSub: Subject = {
@@ -465,31 +443,12 @@ export default function ConfiguracioView({
     setReimportText('');
   };
 
-  const handleExecuteReimport = () => {
-    if (!reimportSubId) return;
-    const currentSub = state.subjects.find(s => s.id === reimportSubId);
-    const currentStudents = currentSub?.students || [];
-
-    const names = reimportText.split(/[\r\n]+/).map(n => n.trim()).filter(Boolean);
-    
-    // Deduplicate by name to prevent overwriting or deleting existing students
-    const existingLowerNames = currentStudents.map(c => c.name.toLowerCase().trim());
-    const newUniqueNames = names.filter(name => !existingLowerNames.includes(name.toLowerCase().trim()));
-
-    const addedStudents: Student[] = newUniqueNames.map((name, i) => ({
-      id: `stud_${Date.now()}_import_${i}`,
-      name
-    }));
-
-    const nextStudents = [...currentStudents, ...addedStudents];
-
-    onChangeState({
-      ...state,
-      subjects: state.subjects.map(s => s.id === reimportSubId ? { ...s, students: nextStudents } : s)
-    });
-
-    setReimportSubId(null);
-    setReimportText('');
+  const handleExecuteReimport = async () => {
+    if(!reimportSubId)return;
+    const names=reimportText.split(/[\r\n]+/).map(n=>n.trim()).filter(Boolean);
+    if(!names.length)return;
+    const students=await chooseStudents(names);if(!students)return;
+    addToSubjects(students,[reimportSubId]);setReimportSubId(null);setReimportText('');
   };
 
   const handleRemoveStudentFromSubject = (subjectId: string, studentId: string) => {
@@ -513,28 +472,9 @@ export default function ConfiguracioView({
     });
   };
 
-  const handleAddSingleStudent = (subjectId: string, name: string) => {
-    const newStudId = `stud_${Date.now()}`;
-    const updatedSubjects = state.subjects.map(s => {
-      if (s.id === subjectId) {
-        const nextStudents = [...s.students, { id: newStudId, name }];
-        if (reimportSubId === subjectId) {
-          setReimportText(nextStudents.map(st => st.name).join('\n'));
-        }
-        return {
-          ...s,
-          students: nextStudents
-        };
-      }
-      return s;
-    });
-
-    onChangeState({
-      ...state,
-      subjects: updatedSubjects
-    });
+  const handleAddSingleStudent = async (subjectId:string,name:string) => {
+    const students=await chooseStudents([name.trim()]);if(students)addToSubjects(students,[subjectId]);
   };
-
 
   // ==========================================
   // TAB 4: COMPETENCIES & EVAL CRITERIA
@@ -696,6 +636,7 @@ export default function ConfiguracioView({
 
   if (curriculumEdit) return <CurriculumEditor key={curriculumEdit.id} state={state} target={curriculumEdit} onChange={onChangeState} onBack={()=>setCurriculumEdit(null)} />;
 
+  if(importReview)return <StudentImportReview state={state} names={importReview.names} onApply={students=>{importReview.resolve(students);setImportReview(null);}} onCancel={()=>{importReview.resolve(null);setImportReview(null);}}/>;
   if (reimportSubId) return <DetailPage title="Gestionar alumnat" subtitle={state.subjects.find(s=>s.id===reimportSubId)?.name} onBack={()=>setReimportSubId(null)}><div className="bg-indigo-950/[0.02] border border-slate-200 rounded-2xl p-6 bg-white space-y-5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div>

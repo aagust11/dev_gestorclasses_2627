@@ -1,0 +1,9 @@
+import React,{useState} from 'react';
+import {AppState,Student} from '../types';
+import {newStudent} from '../utils/studentIdentity';
+export default function StudentImportReview({state,names,onApply,onCancel}:{state:AppState;names:string[];onApply:(students:Student[])=>void;onCancel:()=>void}){
+  const [newPeople]=useState(()=>names.map(newStudent));
+  const [choices,setChoices]=useState(()=>names.map(()=>''));
+  const existing=Object.values(state.studentRegistry||{}).sort((a,b)=>a.name.localeCompare(b.name,'ca'));
+  return <section className="ds-panel space-y-3"><h2 className="text-xl font-bold">Revisar identitats abans d’afegir alumnat</h2><p>Cada fila representa una persona. Tria una identitat existent per conservar la mateixa fitxa entre assignatures, o confirma que és una persona nova. Els noms coincidents no es fusionen automàticament.</p><table className="grade-table"><thead><tr><th>Nom importat</th><th>Identitat</th></tr></thead><tbody>{names.map((name,i)=><tr key={i}><td>{name}</td><td><select aria-label={`Identitat de ${name}, fila ${i+1}`} value={choices[i]} onChange={e=>setChoices(choices.map((v,j)=>j===i?e.target.value:v))}><option value="">Selecciona…</option><option value="new">Crear una persona nova: {name}</option>{existing.map(st=><option key={st.id} value={st.id}>{st.name} · {state.subjects.filter(s=>s.students.some(x=>x.id===st.id)).map(s=>s.name).join(', ')||'Sense matrícula'} · {st.id.slice(-8)}</option>)}</select></td></tr>)}</tbody></table><button className="ds-button" onClick={()=>setChoices(names.map(()=> 'new'))}>Marcar totes com a persones noves</button><button className="ds-button" onClick={onCancel}>Cancel·lar</button><button className="ds-button" disabled={choices.some(c=>!c)} onClick={()=>onApply(choices.map((id,i)=>id==='new'?newPeople[i]:state.studentRegistry![id]))}>Confirmar matrícules</button></section>;
+}
