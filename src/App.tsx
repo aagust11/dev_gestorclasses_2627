@@ -40,11 +40,14 @@ import ConfiguracioView from './components/ConfiguracioView';
 import ClassesView from './components/ClassesView';
 import RendimentView from './components/RendimentView';
 import ActivitatsView from './components/ActivitatsView';
+import StudentsView from './components/StudentsView';
 import QualificacionsView from './components/QualificacionsView';
 
 export default function App() {
   const [localState, setLocalState] = useState<AppState>(getInitialState());
   const [configSubjectId, setConfigSubjectId] = useState<string | null>(null);
+  const [studentId,setStudentId]=useState<string|null>(null);
+  const openStudent=(id:string)=>{setStudentId(id);setActiveView('alumnat');};
   const [activeView, setActiveView] = useState<string>('horari');
   
   // Sibling states for showing detailed individual Session Journal Logs
@@ -229,6 +232,7 @@ export default function App() {
             <h1 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-1.5 uppercase tracking-wide">
               {activeView === 'horari' && 'Horari'}
               {activeView === 'classes' && 'Catàleg de Grups'}
+              {activeView === 'alumnat' && 'Alumnat'}
               {activeView === 'planols' && 'Plànols'}
               {activeView === 'rendiment' && 'Informe de Rendiment i Qualificacions'}
               {activeView === 'configuracio' && 'Configuració'}
@@ -251,8 +255,10 @@ export default function App() {
             />
           )}
 
+          {activeView === 'alumnat' && <StudentsView state={localState} onChange={triggerStateUpdate} selectedId={studentId} onSelect={setStudentId} onSession={handleSelectSessionFromGrid}/>}
           {activeView === 'classes' && (
             <ClassesView 
+              onOpenStudent={openStudent}
               state={localState}
               onNavigateToConfig={(id) => { setConfigSubjectId(id || null); setActiveView('configuracio'); }}
               onNavigateToPlans={() => setActiveView('planols')}

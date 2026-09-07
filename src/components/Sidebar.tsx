@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { 
+  Users,
   Calendar, 
   BookOpen, 
   CheckSquare, 
@@ -26,6 +27,7 @@ export default function Sidebar({
   const menuItems: { id: string; label: string; icon: any; disabled: boolean; badge?: string }[] = [
     { id: 'horari', label: 'Horari', icon: Calendar, disabled: false },
     { id: 'classes', label: 'Assignatures', icon: BookOpen, disabled: false },
+    { id: 'alumnat', label: 'Alumnat', icon: Users, disabled: false },
     { id: 'activitats', label: 'Activitats', icon: CheckSquare, disabled: false },
     { id: 'qualificacions', label: 'Qualificacions', icon: Award, disabled: false },
     { id: 'rendiment', label: 'Rendiment i Informes', icon: TrendingUp, disabled: false },

@@ -233,3 +233,34 @@ test('Excel i recàrrega preserven NP i Exempt sense exposar notes ignorades com
     saveStateToLocalStorage(state);assert.deepEqual(loadStateFromLocalStorage().activities,state.activities);
   }
 });
+
+import {studentPeriodGrade,studentSessionHistory,sessionComments} from '../src/utils/studentProfile';
+import {createElement} from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import StudentsView from '../src/components/StudentsView';
+
+test('La fitxa respecta períodes, notes manuals i notes esborrades del quadern',()=>{
+  const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-01'}];
+  assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,3.2);
+  const manual=calc(s,state.activities);manual.finalGrade={score:2.5,qual:'AS',isManual:true};
+  state.termGradesRecords=[{id:'s_t1_mean',subjectId:'s',periodId:'t1',students:{u:manual}}];
+  assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,2.5);
+  assert.equal(studentPeriodGrade(state,s,'u','t1','median').finalGrade.score,3.2);
+  state.termGradesRecords[0].cleared=true;assert.equal(studentPeriodGrade(state,s,'u','t1','mean'),undefined);
+});
+
+test('El seguiment individual limita alumne, assignatura i dates sense inventar assistència',()=>{
+  const state=getInitialState();state.subjects=[sub()];state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-01'}];
+  const log={id:'one',scheduleItemId:'slot',subjectId:'s',date:'2026-09-02',comments:'',attendance:{u:{status:'absent' as const,posComment:'Antic',posComments:['Actual'],incidentComments:['Incidència']}}};
+  state.sessionLogs=[log,{...log,id:'out',date:'2027-01-01'},{...log,id:'other',subjectId:'other'},{...log,id:'no-student',attendance:{}}];
+  const rows=studentSessionHistory(state,'u','t1');assert.equal(rows.length,1);assert.equal(rows[0].id,'one');assert.deepEqual(sessionComments(rows[0].studentLog,'pos'),['Actual']);
+  assert.equal(studentSessionHistory(state,'u').length,2);assert.equal(studentSessionHistory(state,'missing').length,0);
+});
+
+test('El PSI es conserva en recarregar però no es renderitza quan la fitxa està tancada per defecte',()=>{
+  const state=getInitialState();state.subjects=[sub()];state.studentProfiles={u:{psi:'CONTINGUT_PSI_RESERVAT',notes:'Informació visible'}};
+  const map=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{setItem:(k:string,v:string)=>map.set(k,v),getItem:(k:string)=>map.get(k)}});
+  saveStateToLocalStorage(state);const loaded=loadStateFromLocalStorage();assert.deepEqual(loaded.studentProfiles,state.studentProfiles);
+  const html=renderToStaticMarkup(createElement(StudentsView,{state:loaded,onChange:()=>{},selectedId:'u',onSelect:()=>{},onSession:()=>{}}));
+  assert.ok(html.includes('Informació visible'));assert.ok(html.includes('Mostrar PSI'));assert.ok(!html.includes('CONTINGUT_PSI_RESERVAT'));assert.ok(!html.includes('Contingut del PSI · desat automàtic'));
+});
