@@ -208,7 +208,10 @@ export interface TermStudentGrades {
   };
 }
 
+export type CalculationMode = 'mean' | 'median' | 'mode';
+
 export interface TermGradesRecord {
+  cleared?: boolean;
   id: string; // `${subjectId}_${periodId}`
   subjectId: string;
   periodId: string; // termId ('t1', 't2', 't3') o 'annual'

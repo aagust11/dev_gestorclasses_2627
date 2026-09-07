@@ -1,9 +1,12 @@
+import DetailPage from './DetailPage';
+import SubjectGradingSettings, { validateSubjectGrading } from './SubjectGradingSettings';
+import CriteriaLabels from './CriteriaLabels';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -31,6 +34,7 @@ import {
 import { AppState, Holiday, Term, TimeSlot, Subject, Student, Competency, EvalCriterion, ScheduleItem } from '../types';
 
 interface ConfiguracioViewProps {
+  initialSubjectId?: string | null;
   state: AppState;
   onChangeState: (nextState: AppState) => void;
   linkedFileName: string | null;
@@ -42,6 +46,7 @@ interface ConfiguracioViewProps {
 }
 
 export default function ConfiguracioView({ 
+  initialSubjectId,
   state, 
   onChangeState,
   linkedFileName,
@@ -297,6 +302,7 @@ export default function ConfiguracioView({
   const [subBulkStudents, setSubBulkStudents] = useState('');
 
   // Editing subjects variables
+  const [isCreatingSubject, setIsCreatingSubject] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
   const [editName, setEditName] = useState('');
@@ -359,6 +365,8 @@ export default function ConfiguracioView({
   const handleSaveEditedSubject = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSubject || !editName) return;
+    const gradingError = !editIsGeneral && validateSubjectGrading(editingSubject);
+    if (gradingError) { alert(gradingError); return; }
 
     onChangeState({
       ...state,
@@ -366,6 +374,9 @@ export default function ConfiguracioView({
         if (s.id === editingSubject.id) {
           return {
             ...s,
+            evaluationType: editingSubject.evaluationType || 'competencial',
+            numericItems: editingSubject.numericItems,
+            compSettings: editingSubject.compSettings,
             name: editName,
             color: editColor,
             isGeneral: editIsGeneral,
@@ -419,6 +430,8 @@ export default function ConfiguracioView({
     setSubIsParent(false);
     setSubParentId('');
     setSubBulkStudents('');
+    setIsCreatingSubject(false);
+    startEditingSubject(newSub);
   };
 
   const handleRemoveSubject = (id: string) => {
@@ -649,6 +662,8 @@ export default function ConfiguracioView({
       id: `crit_${Date.now()}`,
       competencyId: critCompId,
       key: newCritKey,
+      shortLabel: newCritKey,
+      order: state.criteria.length,
       description: newCritDesc
     };
 
@@ -668,6 +683,306 @@ export default function ConfiguracioView({
       criteria: state.criteria.filter(cr => cr.id !== critId)
     });
   };
+
+  useEffect(() => {
+    if (!initialSubjectId) return;
+    setActiveTab('subjects');
+    if (initialSubjectId === 'new') setIsCreatingSubject(true);
+    else { const selected = state.subjects.find(s => s.id === initialSubjectId); if (selected) startEditingSubject(selected); }
+  }, [initialSubjectId]);
+
+  if (reimportSubId) return <DetailPage title="Gestionar alumnat" subtitle={state.subjects.find(s=>s.id===reimportSubId)?.name} onBack={()=>setReimportSubId(null)}><div className="bg-indigo-950/[0.02] border border-slate-200 rounded-2xl p-6 bg-white space-y-5">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">
+                      Gestió d'Alumnat: {state.subjects.find(s => s.id === reimportSubId)?.name}
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Gestioneu individualment els alumnes d'aquest grup.</p>
+                  </div>
+                  <button onClick={() => setReimportSubId(null)} className="text-xs text-rose-500 font-bold hover:underline">
+                    Tancar
+                  </button>
+                </div>
+
+                <div className="space-y-3 max-w-xl mx-auto">
+                  {/* Single student management list */}
+                  <div className="space-y-3">
+                    <h5 className="font-bold text-slate-800 text-xs">Llista d'Alumnes Actuals ({state.subjects.find(s => s.id === reimportSubId)?.students.length || 0}):</h5>
+                    <div className="max-h-60 overflow-y-auto space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-150">
+                      {(() => {
+                        const activeSub = state.subjects.find(s => s.id === reimportSubId);
+                        if (!activeSub || activeSub.students.length === 0) {
+                          return <p className="text-slate-400 italic text-[11px] text-center py-8">Sense alumnat en aquest grup.</p>;
+                        }
+                        return activeSub.students.map((st) => (
+                          <div key={st.id} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-100 shadow-sm hover:border-slate-250 transition-colors">
+                            <span className="font-semibold text-slate-700 truncate mr-2">{st.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveStudentFromSubject(reimportSubId, st.id)}
+                              className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded transition-colors"
+                              title="Eliminar alumne"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+
+                    {/* Quick single add action */}
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wide">Afegir Alumne Individual</label>
+                      <div className="flex gap-2">
+                        <input
+                          id="input-single-student-add"
+                          type="text"
+                          placeholder="ex. Marín, David"
+                          className="flex-1 text-xs border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const val = e.currentTarget.value.trim();
+                              if (val) {
+                                handleAddSingleStudent(reimportSubId, val);
+                                e.currentTarget.value = '';
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById('input-single-student-add') as HTMLInputElement;
+                            if (input && input.value.trim()) {
+                              handleAddSingleStudent(reimportSubId, input.value.trim());
+                              input.value = '';
+                            }
+                          }}
+                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg cursor-pointer"
+                        >
+                          Afegir
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+</DetailPage>;
+
+  if (editingSubject) return <DetailPage title="Configurar assignatura" subtitle={editingSubject.name} onBack={() => setEditingSubject(null)}><div className="bg-amber-500/[0.02] border border-amber-200 rounded-2xl p-6 bg-white space-y-4 shadow-sm animate-fadeIn">
+                <div className="flex items-center justify-between border-b border-amber-100 pb-3">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">
+                      Modificar Preferències de l'Assignatura
+                    </h4>
+                    <p className="text-[10px] text-slate-405 mt-0.5 font-medium">Editeu les dades de {editingSubject.name}</p>
+                  </div>
+                  <button onClick={() => setEditingSubject(null)} className="text-xs text-rose-500 font-bold hover:underline">
+                    Cancel·lar
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEditedSubject} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nom de l'Assignatura o Activitat</label>
+                      <input
+                        id="edit-sub-name"
+                        required
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full text-slate-800 text-sm p-3 border border-slate-200 rounded-xl"
+                      />
+                    </div>
+
+                    {/* Color picking */}
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Color de la targeta</label>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          id="edit-sub-color"
+                          type="color"
+                          value={editColor}
+                          onChange={(e) => setEditColor(e.target.value)}
+                          className="w-10 h-10 p-1 border border-slate-200 rounded-xl bg-white cursor-pointer"
+                        />
+                        <span className="text-xs text-slate-500 font-mono">{editColor}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center space-x-3 bg-slate-50 p-2.5 border rounded-xl">
+                      <input
+                        id="edit-sub-isgeneral"
+                        type="checkbox"
+                        checked={editIsGeneral}
+                        onChange={(e) => {
+                          setEditIsGeneral(e.target.checked);
+                          if (e.target.checked) setEditIsParent(false);
+                          if (e.target.checked) setEditParentId('');
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                      />
+                      <div>
+                        <label htmlFor="edit-sub-isgeneral" className="block text-xs font-bold text-slate-800">Acció general de centre</label>
+                        <span className="block text-[10px] text-slate-400">Patis, guàrdies, coordinacions (buida alumnat)</span>
+                      </div>
+                    </div>
+
+                    {!editIsGeneral && (
+                      <div className="flex items-center space-x-3 bg-slate-50 p-2.5 border rounded-xl">
+                        <input
+                          id="edit-sub-isparent"
+                          type="checkbox"
+                          checked={editIsParent}
+                          onChange={(e) => {
+                            setEditIsParent(e.target.checked);
+                            if (e.target.checked) setEditParentId('');
+                          }}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                        />
+                        <div>
+                          <label htmlFor="edit-sub-isparent" className="block text-xs font-bold text-slate-800">Tria com a Grup Mare</label>
+                          <span className="block text-[10px] text-slate-400">Els subgrups o fills heretaran les competències d'aquest grup (mai els alumnes).</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {!editIsGeneral && !editIsParent && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Canviar Grup Mare (Opcional)</label>
+                        <select
+                          id="edit-select-sub-parent"
+                          value={editParentId}
+                          onChange={(e) => setEditParentId(e.target.value)}
+                          className="w-full text-slate-850 text-sm p-3 border border-slate-200 rounded-xl bg-white"
+                        >
+                          <option value="">Cap (Grup Autònom)</option>
+                          {state.subjects.filter(s => s.isParent && s.id !== editingSubject.id).map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {!editIsGeneral && <SubjectGradingSettings subject={editingSubject} onChange={setEditingSubject} />}
+                  <div className="md:col-span-2 pt-2">
+                    <button
+                      type="submit"
+                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
+                    >
+                      Desar Canvis de l'Assignatura
+                    </button>
+                  </div>
+                </form>
+              </div>
+</DetailPage>;
+
+  if (isCreatingSubject) return <DetailPage title="Nova assignatura" onBack={() => setIsCreatingSubject(false)}><div className="space-y-6">
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4">Creador d'Assignatures</h3>
+              <form onSubmit={handleCreateSubject} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nom de l'Assignatura o Activitat</label>
+                  <input
+                    id="input-sub-name"
+                    required
+                    placeholder="ex. Programació DAW2, Guàrdia Pati"
+                    value={subName}
+                    onChange={(e) => setSubName(e.target.value)}
+                    className="w-full text-slate-800 text-sm p-3 border border-slate-200 rounded-xl"
+                  />
+                </div>
+
+                <div className="flex items-center space-x-3 bg-slate-50 p-3 border rounded-xl">
+                  <input
+                    id="check-sub-isgeneral"
+                    type="checkbox"
+                    checked={subIsGeneral}
+                    onChange={(e) => {
+                      setSubIsGeneral(e.target.checked);
+                      if (e.target.checked) setSubIsParent(false);
+                      if (e.target.checked) setSubParentId('');
+                    }}
+                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                  />
+                  <div>
+                    <label htmlFor="check-sub-isgeneral" className="block text-xs font-bold text-slate-800">Acció general de centre</label>
+                    <span className="block text-[10px] text-slate-400">Guàrdies, coordinacions, patis (sense llista d'alumnes)</span>
+                  </div>
+                </div>
+
+                {!subIsGeneral && (
+                  <div className="flex items-center space-x-3 bg-slate-50 p-3 border rounded-xl">
+                    <input
+                      id="check-sub-isparent"
+                      type="checkbox"
+                      checked={subIsParent}
+                      onChange={(e) => {
+                        setSubIsParent(e.target.checked);
+                        if (e.target.checked) setSubParentId('');
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                    />
+                    <div>
+                      <label htmlFor="check-sub-isparent" className="block text-xs font-bold text-slate-800">Tria com a Grup Mare</label>
+                      <span className="block text-[10px] text-slate-400">Els subgrups o fills d'aquest grup mare n'heretaran les competències definides (mai els alumnes).</span>
+                    </div>
+                  </div>
+                )}
+
+                {!subIsGeneral && (
+                  <>
+                    {/* Parent group selector */}
+                    {!subIsParent && (
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Grup Mare d'Assignatura (Opcional)</label>
+                        <select
+                          id="select-sub-parent"
+                          value={subParentId}
+                          onChange={(e) => setSubParentId(e.target.value)}
+                          className="w-full text-slate-855 text-sm p-3 border border-slate-200 rounded-xl bg-white"
+                        >
+                          <option value="">Cap (Grup Autònom)</option>
+                          {state.subjects.filter(s => s.isParent && !s.isGeneral).map((s) => (
+                            <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                        </select>
+                        <span className="block text-[10px] text-slate-400 mt-1">El fill heretarà automàticament les competències definides al grup mare triat.</span>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Color picking */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Color de la targeta</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      id="input-sub-color"
+                      type="color"
+                      value={subColor}
+                      onChange={(e) => setSubColor(e.target.value)}
+                      className="w-10 h-10 p-1 border border-slate-200 rounded-xl bg-white cursor-pointer"
+                    />
+                    <span className="text-xs text-slate-500 font-mono">{subColor}</span>
+                  </div>
+                </div>
+
+                <button
+                  id="btn-create-subject"
+                  type="submit"
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl"
+                >
+                  Crear i configurar l’assignatura
+                </button>
+              </form>
+            </div>
+          </div>
+</DetailPage>;
 
   return (
     <div id="configuracio-view-root" className="space-y-6">
@@ -1143,8 +1458,9 @@ export default function ConfiguracioView({
           TAB 3 PANEL: SUBJECTS & BULK ALUMNI
           ========================================== */}
       {activeTab === 'subjects' && (
-        <div id="panel-subjects" className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
+        <div id="panel-subjects" className="space-y-4">
           {/* Subjects Directory */}
+          <button className="ds-button ds-primary" onClick={() => setIsCreatingSubject(true)}>Nova assignatura</button>
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
               <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
@@ -1181,10 +1497,10 @@ export default function ConfiguracioView({
                               )}
                               <button
                                 onClick={() => startEditingSubject(sub)}
-                                className="p-1 hover:bg-slate-200 text-amber-600 rounded"
-                                title="Editar preferències i color de l'assignatura"
+                                className="ds-button text-blue-700"
+                                title="Configurar assignatura, ítems i llindars de notes"
                               >
-                                <Edit2 className="w-3.5 h-3.5" />
+                                <Edit2 className="w-3.5 h-3.5" /> Configurar
                               </button>
                               <button
                                 id={`btn-remove-sub-${sub.id}`}
@@ -1233,198 +1549,6 @@ export default function ConfiguracioView({
             </div>
 
             {/* Mass Pupil importer overlay modal helper */}
-            {reimportSubId && (
-              <div className="bg-indigo-950/[0.02] border border-slate-200 rounded-2xl p-6 bg-white space-y-5">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-sm">
-                      Gestió d'Alumnat: {state.subjects.find(s => s.id === reimportSubId)?.name}
-                    </h4>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Gestioneu individualment els alumnes d'aquest grup.</p>
-                  </div>
-                  <button onClick={() => setReimportSubId(null)} className="text-xs text-rose-500 font-bold hover:underline">
-                    Tancar
-                  </button>
-                </div>
-
-                <div className="space-y-3 max-w-xl mx-auto">
-                  {/* Single student management list */}
-                  <div className="space-y-3">
-                    <h5 className="font-bold text-slate-800 text-xs">Llista d'Alumnes Actuals ({state.subjects.find(s => s.id === reimportSubId)?.students.length || 0}):</h5>
-                    <div className="max-h-60 overflow-y-auto space-y-1 bg-slate-50 p-3 rounded-xl border border-slate-150">
-                      {(() => {
-                        const activeSub = state.subjects.find(s => s.id === reimportSubId);
-                        if (!activeSub || activeSub.students.length === 0) {
-                          return <p className="text-slate-400 italic text-[11px] text-center py-8">Sense alumnat en aquest grup.</p>;
-                        }
-                        return activeSub.students.map((st) => (
-                          <div key={st.id} className="flex items-center justify-between text-xs bg-white p-2 rounded-lg border border-slate-100 shadow-sm hover:border-slate-250 transition-colors">
-                            <span className="font-semibold text-slate-700 truncate mr-2">{st.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveStudentFromSubject(reimportSubId, st.id)}
-                              className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded transition-colors"
-                              title="Eliminar alumne"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-
-                    {/* Quick single add action */}
-                    <div className="space-y-1.5 pt-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wide">Afegir Alumne Individual</label>
-                      <div className="flex gap-2">
-                        <input
-                          id="input-single-student-add"
-                          type="text"
-                          placeholder="ex. Marín, David"
-                          className="flex-1 text-xs border border-slate-200 p-2.5 rounded-lg focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const val = e.currentTarget.value.trim();
-                              if (val) {
-                                handleAddSingleStudent(reimportSubId, val);
-                                e.currentTarget.value = '';
-                              }
-                            }
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const input = document.getElementById('input-single-student-add') as HTMLInputElement;
-                            if (input && input.value.trim()) {
-                              handleAddSingleStudent(reimportSubId, input.value.trim());
-                              input.value = '';
-                            }
-                          }}
-                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg cursor-pointer"
-                        >
-                          Afegir
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Subject Edit Panel Overlay */}
-            {editingSubject && (
-              <div className="bg-amber-500/[0.02] border border-amber-200 rounded-2xl p-6 bg-white space-y-4 shadow-sm animate-fadeIn">
-                <div className="flex items-center justify-between border-b border-amber-100 pb-3">
-                  <div>
-                    <h4 className="font-bold text-slate-900 text-sm">
-                      Modificar Preferències de l'Assignatura
-                    </h4>
-                    <p className="text-[10px] text-slate-405 mt-0.5 font-medium">Editeu les dades de {editingSubject.name}</p>
-                  </div>
-                  <button onClick={() => setEditingSubject(null)} className="text-xs text-rose-500 font-bold hover:underline">
-                    Cancel·lar
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveEditedSubject} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nom de l'Assignatura o Activitat</label>
-                      <input
-                        id="edit-sub-name"
-                        required
-                        value={editName}
-                        onChange={(e) => setEditName(e.target.value)}
-                        className="w-full text-slate-800 text-sm p-3 border border-slate-200 rounded-xl"
-                      />
-                    </div>
-
-                    {/* Color picking */}
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-500 mb-1.5">Color de la targeta</label>
-                      <div className="flex items-center space-x-2">
-                        <input
-                          id="edit-sub-color"
-                          type="color"
-                          value={editColor}
-                          onChange={(e) => setEditColor(e.target.value)}
-                          className="w-10 h-10 p-1 border border-slate-200 rounded-xl bg-white cursor-pointer"
-                        />
-                        <span className="text-xs text-slate-500 font-mono">{editColor}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-3 bg-slate-50 p-2.5 border rounded-xl">
-                      <input
-                        id="edit-sub-isgeneral"
-                        type="checkbox"
-                        checked={editIsGeneral}
-                        onChange={(e) => {
-                          setEditIsGeneral(e.target.checked);
-                          if (e.target.checked) setEditIsParent(false);
-                          if (e.target.checked) setEditParentId('');
-                        }}
-                        className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                      />
-                      <div>
-                        <label htmlFor="edit-sub-isgeneral" className="block text-xs font-bold text-slate-800">Acció general de centre</label>
-                        <span className="block text-[10px] text-slate-400">Patis, guàrdies, coordinacions (buida alumnat)</span>
-                      </div>
-                    </div>
-
-                    {!editIsGeneral && (
-                      <div className="flex items-center space-x-3 bg-slate-50 p-2.5 border rounded-xl">
-                        <input
-                          id="edit-sub-isparent"
-                          type="checkbox"
-                          checked={editIsParent}
-                          onChange={(e) => {
-                            setEditIsParent(e.target.checked);
-                            if (e.target.checked) setEditParentId('');
-                          }}
-                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                        />
-                        <div>
-                          <label htmlFor="edit-sub-isparent" className="block text-xs font-bold text-slate-800">Tria com a Grup Mare</label>
-                          <span className="block text-[10px] text-slate-400">Els subgrups o fills heretaran les competències d'aquest grup (mai els alumnes).</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {!editIsGeneral && !editIsParent && (
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Canviar Grup Mare (Opcional)</label>
-                        <select
-                          id="edit-select-sub-parent"
-                          value={editParentId}
-                          onChange={(e) => setEditParentId(e.target.value)}
-                          className="w-full text-slate-850 text-sm p-3 border border-slate-200 rounded-xl bg-white"
-                        >
-                          <option value="">Cap (Grup Autònom)</option>
-                          {state.subjects.filter(s => s.isParent && s.id !== editingSubject.id).map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="md:col-span-2 pt-2">
-                    <button
-                      type="submit"
-                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer shadow-md"
-                    >
-                      Desar Canvis de l'Assignatura
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
             {/* Simultaneous multi-subject assignment card */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm mt-6">
               <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
@@ -1519,108 +1643,6 @@ export default function ConfiguracioView({
             </div>
           </div>
 
-          {/* Subject Builder panel */}
-          <div className="space-y-6">
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <h3 className="font-bold text-slate-900 border-b border-slate-100 pb-3 mb-4">Creador d'Assignatures</h3>
-              <form onSubmit={handleCreateSubject} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Nom de l'Assignatura o Activitat</label>
-                  <input
-                    id="input-sub-name"
-                    required
-                    placeholder="ex. Programació DAW2, Guàrdia Pati"
-                    value={subName}
-                    onChange={(e) => setSubName(e.target.value)}
-                    className="w-full text-slate-800 text-sm p-3 border border-slate-200 rounded-xl"
-                  />
-                </div>
-
-                <div className="flex items-center space-x-3 bg-slate-50 p-3 border rounded-xl">
-                  <input
-                    id="check-sub-isgeneral"
-                    type="checkbox"
-                    checked={subIsGeneral}
-                    onChange={(e) => {
-                      setSubIsGeneral(e.target.checked);
-                      if (e.target.checked) setSubIsParent(false);
-                      if (e.target.checked) setSubParentId('');
-                    }}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                  />
-                  <div>
-                    <label htmlFor="check-sub-isgeneral" className="block text-xs font-bold text-slate-800">Acció general de centre</label>
-                    <span className="block text-[10px] text-slate-400">Guàrdies, coordinacions, patis (sense llista d'alumnes)</span>
-                  </div>
-                </div>
-
-                {!subIsGeneral && (
-                  <div className="flex items-center space-x-3 bg-slate-50 p-3 border rounded-xl">
-                    <input
-                      id="check-sub-isparent"
-                      type="checkbox"
-                      checked={subIsParent}
-                      onChange={(e) => {
-                        setSubIsParent(e.target.checked);
-                        if (e.target.checked) setSubParentId('');
-                      }}
-                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                    />
-                    <div>
-                      <label htmlFor="check-sub-isparent" className="block text-xs font-bold text-slate-800">Tria com a Grup Mare</label>
-                      <span className="block text-[10px] text-slate-400">Els subgrups o fills d'aquest grup mare n'heretaran les competències definides (mai els alumnes).</span>
-                    </div>
-                  </div>
-                )}
-
-                {!subIsGeneral && (
-                  <>
-                    {/* Parent group selector */}
-                    {!subIsParent && (
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-500 mb-1.5">Grup Mare d'Assignatura (Opcional)</label>
-                        <select
-                          id="select-sub-parent"
-                          value={subParentId}
-                          onChange={(e) => setSubParentId(e.target.value)}
-                          className="w-full text-slate-855 text-sm p-3 border border-slate-200 rounded-xl bg-white"
-                        >
-                          <option value="">Cap (Grup Autònom)</option>
-                          {state.subjects.filter(s => s.isParent && !s.isGeneral).map((s) => (
-                            <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                        </select>
-                        <span className="block text-[10px] text-slate-400 mt-1">El fill heretarà automàticament les competències definides al grup mare triat.</span>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Color picking */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Color de la targeta</label>
-                  <div className="flex items-center space-x-2">
-                    <input
-                      id="input-sub-color"
-                      type="color"
-                      value={subColor}
-                      onChange={(e) => setSubColor(e.target.value)}
-                      className="w-10 h-10 p-1 border border-slate-200 rounded-xl bg-white cursor-pointer"
-                    />
-                    <span className="text-xs text-slate-500 font-mono">{subColor}</span>
-                  </div>
-                </div>
-
-                <button
-                  id="btn-create-subject"
-                  type="submit"
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl"
-                >
-                  Crear Assignatura/Grup
-                </button>
-              </form>
-            </div>
-          </div>
         </div>
       )}
 
@@ -1649,6 +1671,7 @@ export default function ConfiguracioView({
               </select>
             </div>
 
+            {selectedSubjectForComp && <CriteriaLabels state={state} subjectId={effectiveCompSubId} onChange={onChangeState} />}
             {selectedSubjectForComp && (
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-4 mb-2 gap-2">

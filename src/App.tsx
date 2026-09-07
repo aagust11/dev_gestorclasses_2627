@@ -27,7 +27,8 @@ import {
   verifyPermission,
   loadFromFileHandle,
   saveToFileHandle,
-  validateState
+  validateState,
+  normalizeState
 } from './storage';
 
 // Import Views
@@ -43,6 +44,7 @@ import QualificacionsView from './components/QualificacionsView';
 
 export default function App() {
   const [localState, setLocalState] = useState<AppState>(getInitialState());
+  const [configSubjectId, setConfigSubjectId] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<string>('horari');
   
   // Sibling states for showing detailed individual Session Journal Logs
@@ -157,7 +159,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(event.target?.result as string);
         if (validateState(parsed)) {
-          triggerStateUpdate(parsed);
+          triggerStateUpdate(normalizeState(parsed));
           alert('S\'han carregat i importat correctament totes les dades del fitxer JSON seleccionat.');
         } else {
           alert('Error: L\'estructura del fitxer JSON no respon al format vàlid d\'esquemes d\'DocentSuite.');
@@ -213,6 +215,7 @@ export default function App() {
       <Sidebar 
         activeView={activeView === 'session_log' ? 'horari' : activeView}
         onViewChange={(view) => {
+          setConfigSubjectId(null);
           setActiveView(view);
           setSelectedSessionSlotId(null);
           setSelectedSessionDate(null);
@@ -230,6 +233,7 @@ export default function App() {
               {activeView === 'rendiment' && 'Informe de Rendiment i Qualificacions'}
               {activeView === 'configuracio' && 'Configuració'}
               {activeView === 'activitats' && 'Activitats'}
+              {activeView === 'qualificacions' && 'Qualificacions'}
               {activeView === 'session_log' && 'Registre de Classe Actiu'}
             </h1>
             <p className="text-xs text-slate-400 font-medium">DocentSuite Workspace</p>
@@ -250,7 +254,7 @@ export default function App() {
           {activeView === 'classes' && (
             <ClassesView 
               state={localState}
-              onNavigateToConfig={() => setActiveView('configuracio')}
+              onNavigateToConfig={(id) => { setConfigSubjectId(id || null); setActiveView('configuracio'); }}
               onNavigateToPlans={() => setActiveView('planols')}
             />
           )}
@@ -284,6 +288,7 @@ export default function App() {
 
           {activeView === 'configuracio' && (
             <ConfiguracioView 
+              initialSubjectId={configSubjectId}
               state={localState}
               onChangeState={triggerStateUpdate}
               linkedFileName={linkedFileName}

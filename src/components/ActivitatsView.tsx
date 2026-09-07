@@ -1,3 +1,6 @@
+import {getActivityScore, getCriterionScore} from '../utils/gradeCalculations';
+import DetailPage from './DetailPage';
+import ActivityGradePage from './ActivityGradePage';
 import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, 
@@ -54,7 +57,7 @@ export default function ActivitatsView({ state, onChangeState }: ActivitatsViewP
   }, [state.subjects]);
 
   const [selectedSubId, setSelectedSubId] = useState<string>(() => {
-    return validSubjects[0]?.id || '';
+    return validSubjects.find(s => !s.isParent)?.id || validSubjects[0]?.id || '';
   });
 
   const activeSubject = useMemo(() => {
@@ -120,6 +123,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const [selectedCritIds, setSelectedCritIds] = useState<string[]>([]);
   const [criteriaWeights, setCriteriaWeights] = useState<Record<string, number>>({});
   const [criteriaGradingType, setCriteriaGradingType] = useState<Record<string, 'competencial' | 'numeric'>>({});
+  const [criteriaCustomLabels, setCriteriaCustomLabels] = useState<Record<string,string>>({});
   const [criteriaMaxScores, setCriteriaMaxScores] = useState<Record<string, number>>({});
   const [activityNumericItemId, setActivityNumericItemId] = useState<string>('');
   const [activityNumericGradingType, setActivityNumericGradingType] = useState<'numeric' | 'competencial'>('numeric');
@@ -218,6 +222,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setCriteriaWeights({});
     setCriteriaGradingType({});
     setCriteriaMaxScores({});
+    setCriteriaCustomLabels({});
     setActivityNumericItemId('');
     setActivityNumericGradingType('numeric');
     setResources([]);
@@ -227,6 +232,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const handleSaveActivity = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSubId) return;
+    if (activityEndDate < activityStartDate) { alert('El lliurament no pot ser anterior a l’inici.'); return; }
+    if (activeSubject?.evaluationType === 'numeric' && !activityNumericItemId) { alert('Selecciona l’ítem numèric de l’activitat.'); return; }
     if (!activityCode.trim() || !activityTitle.trim()) {
       alert('Siusplau, omple com a mínim el codi i el títol de l\'activitat.');
       return;
@@ -241,13 +248,14 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       startDate: activityStartDate,
       endDate: activityEndDate,
       status: activityStatus,
-      termId: activityTermId,
+      termId: state.config.terms.find(t => activityEndDate >= t.startDate && activityEndDate <= t.endDate)?.id || '',
       weight: Number(activityWeight) || 0,
       resources: resources,
       criteriaIds: selectedCritIds,
       criteriaWeights: criteriaWeights,
       criteriaGradingType: criteriaGradingType,
       criteriaMaxScores: criteriaMaxScores,
+      criteriaCustomLabels,
       numericItemId: activityNumericItemId || undefined,
       numericGradingType: activityNumericGradingType,
       grades: editingId ? (existingActivities.find(a => a.id === editingId)?.grades || {}) : {}
@@ -294,6 +302,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             status: nextActivity.status,
             termId: nextActivity.termId,
             weight: nextActivity.weight,
+            criteriaCustomLabels: nextActivity.criteriaCustomLabels,
             resources: nextActivity.resources,
             criteriaIds: nextActivity.criteriaIds,
             criteriaWeights: nextActivity.criteriaWeights,
@@ -315,6 +324,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             status: nextActivity.status,
             termId: nextActivity.termId,
             weight: nextActivity.weight,
+            criteriaCustomLabels: nextActivity.criteriaCustomLabels,
             resources: nextActivity.resources,
             criteriaIds: nextActivity.criteriaIds,
             criteriaWeights: nextActivity.criteriaWeights,
@@ -370,12 +380,13 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setActivityStartDate(act.startDate);
     setActivityEndDate(act.endDate);
     setActivityStatus(act.status || 'auto');
-    setActivityTermId(act.termId);
+    setActivityTermId(state.config.terms.find(t => act.endDate >= t.startDate && act.endDate <= t.endDate)?.id || '');
     setActivityWeight(act.weight);
     setSelectedCritIds(act.criteriaIds || []);
     setCriteriaWeights(act.criteriaWeights || {});
     setCriteriaGradingType(act.criteriaGradingType || {});
     setCriteriaMaxScores(act.criteriaMaxScores || {});
+    setCriteriaCustomLabels(act.criteriaCustomLabels || {});
     setActivityNumericItemId(act.numericItemId || '');
     setActivityNumericGradingType(act.numericGradingType || 'numeric');
     setResources((act.resources || []).map(resource => ({ ...resource, id: resource.id || crypto.randomUUID() })));
@@ -433,160 +444,6 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   }, [selectedActIdForGrading, existingActivities]);
 
   // Handle criterion-specific grade update
-  const handleUpdateStudentCriterionGrade = (
-    studentId: string,
-    criterionId: string,
-    type: 'competencial' | 'numeric',
-    val: 'AE' | 'AN' | 'AS' | 'NA' | number | undefined,
-    criterionMax: number = 10
-  ) => {
-    if (!selectedActIdForGrading) return;
-    const compSettings = activeSubject?.compSettings || DEFAULT_COMP_SETTINGS;
-
-    const updatedActs = existingActivities.map(act => {
-      if (act.id !== selectedActIdForGrading) return act;
-      const grades: Record<string, StudentActivityGrade> = { ...(act.grades || {}) };
-      const currentStudentGrade: StudentActivityGrade = grades[studentId] ? { ...grades[studentId] } : { comment: '' };
-      const critGrades: Record<string, StudentCriterionGrade> = { ...(currentStudentGrade.criteriaGrades || {}) };
-
-      if (type === 'competencial') {
-        const compVal = val as 'AE' | 'AN' | 'AS' | 'NA' | undefined;
-        if (compVal) {
-          // If clicking the same one already selected, allow toggling off
-          if (critGrades[criterionId]?.competencialScore === compVal) {
-            delete critGrades[criterionId];
-          } else {
-            critGrades[criterionId] = {
-              criterionId,
-              competencialScore: compVal,
-              normalizedScore: competencialToScore(compVal, compSettings.values)
-            };
-          }
-        } else {
-          delete critGrades[criterionId];
-        }
-      } else {
-        const numVal = val as number | undefined;
-        if (numVal !== undefined && !isNaN(numVal)) {
-          const max = criterionMax > 0 ? criterionMax : 10;
-          const normalized = Math.max(0, Math.min(4, (numVal / max) * 4));
-          critGrades[criterionId] = {
-            criterionId,
-            rawScore: numVal,
-            maxScore: max,
-            normalizedScore: normalized,
-            competencialScore: scoreToCompetencial(normalized, compSettings.thresholds)
-          };
-        } else {
-          delete critGrades[criterionId];
-        }
-      }
-
-      currentStudentGrade.criteriaGrades = critGrades;
-
-      // Automatically recalculate summary activity score based on criteria weighted average
-      const cIds = act.criteriaIds || [];
-      if (cIds.length > 0) {
-        let totalWeighted = 0;
-        let totalWeights = 0;
-        let hasAnyGrade = false;
-
-        cIds.forEach(cid => {
-          const cg = critGrades[cid];
-          const w = act.criteriaWeights?.[cid] ?? 1;
-          if (cg && cg.normalizedScore !== undefined) {
-            totalWeighted += cg.normalizedScore * w;
-            totalWeights += w;
-            hasAnyGrade = true;
-          }
-        });
-
-        if (hasAnyGrade && totalWeights > 0) {
-          const avgScore4 = totalWeighted / totalWeights;
-          currentStudentGrade.competencialScore = scoreToCompetencial(avgScore4, compSettings.thresholds);
-          currentStudentGrade.score = Math.round((avgScore4 / 4) * 100) / 10;
-        } else {
-          currentStudentGrade.competencialScore = undefined;
-          currentStudentGrade.score = undefined;
-        }
-      }
-
-      grades[studentId] = currentStudentGrade;
-      return { ...act, grades };
-    });
-
-    onChangeState({
-      ...state,
-      activities: updatedActs
-    });
-  };
-
-  // Handle direct score update (for activities with no criteria or numeric item activities)
-  const handleUpdateDirectStudentGrade = (
-    studentId: string,
-    field: 'score' | 'competencialScore',
-    value: any
-  ) => {
-    if (!selectedActIdForGrading) return;
-    const compSettings = activeSubject?.compSettings || DEFAULT_COMP_SETTINGS;
-
-    const updatedActs = existingActivities.map(act => {
-      if (act.id !== selectedActIdForGrading) return act;
-      const grades: Record<string, StudentActivityGrade> = { ...(act.grades || {}) };
-      const current: StudentActivityGrade = grades[studentId] ? { ...grades[studentId] } : {};
-
-      if (field === 'score') {
-        const num = value === '' ? undefined : parseFloat(value);
-        current.score = num;
-        if (num !== undefined && !isNaN(num)) {
-          const normalized = (num / 10) * 4;
-          current.competencialScore = scoreToCompetencial(normalized, compSettings.thresholds);
-        } else {
-          current.score = undefined;
-          current.competencialScore = undefined;
-        }
-      } else if (field === 'competencialScore') {
-        // Allow toggling off if same
-        if (current.competencialScore === value) {
-          current.competencialScore = undefined;
-          current.score = undefined;
-        } else {
-          current.competencialScore = value;
-          if (value) {
-            const score4 = competencialToScore(value, compSettings.values);
-            current.score = Math.round((score4 / 4) * 100) / 10;
-          }
-        }
-      }
-
-      grades[studentId] = current;
-      return { ...act, grades };
-    });
-
-    onChangeState({
-      ...state,
-      activities: updatedActs
-    });
-  };
-
-  // Handle student comment update (single comment space per student)
-  const handleUpdateStudentComment = (studentId: string, comment: string) => {
-    if (!selectedActIdForGrading) return;
-
-    const updatedActs = existingActivities.map(act => {
-      if (act.id !== selectedActIdForGrading) return act;
-      const grades: Record<string, StudentActivityGrade> = { ...(act.grades || {}) };
-      const current: StudentActivityGrade = grades[studentId] ? { ...grades[studentId] } : {};
-      current.comment = comment;
-      grades[studentId] = current;
-      return { ...act, grades };
-    });
-
-    onChangeState({
-      ...state,
-      activities: updatedActs
-    });
-  };
 
   // Auto-filled Competency checklist mapping for display
   // "L'assignació de competències es fa a partir dels criteris d'avaluació que s'assignin a les activitats"
@@ -631,15 +488,6 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   // - "i una vegada tots els alumnes han estat corregits, es posaria en corregida"
   const resolveActivityStatus = (act: CurricularActivity) => {
     const isAuto = !act.status || act.status === 'auto';
-    if (!isAuto) {
-      return {
-        effectiveStatus: act.status as 'not_open' | 'open' | 'pending_correction' | 'corrected',
-        isAuto: false,
-        totalStudents: 0,
-        gradedStudents: 0
-      };
-    }
-
     const sub = state.subjects.find(s => s.id === act.subjectId);
     let relevantStudents: Student[] = [];
     if (sub) {
@@ -656,23 +504,16 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       }
     }
 
-    let gradedCount = 0;
-    if (relevantStudents.length > 0) {
-      if (sub?.isParent) {
-        const childSubs = state.subjects.filter(s => s.parentId === sub.id);
-        const childSubIds = childSubs.map(c => c.id);
-        const childActs = (state.activities || []).filter(a => childSubIds.includes(a.subjectId) && a.code === act.code);
-        relevantStudents.forEach(st => {
-          const hasDirect = act.grades?.[st.id]?.score !== undefined;
-          const hasChild = childActs.some(ca => ca.grades?.[st.id]?.score !== undefined);
-          if (hasDirect || hasChild) gradedCount++;
-        });
-      } else {
-        relevantStudents.forEach(st => {
-          if (act.grades?.[st.id]?.score !== undefined) gradedCount++;
-        });
-      }
-    }
+    const isFullyGraded = (a: CurricularActivity, id: string) => {
+      const owner=state.subjects.find(s=>s.id===a.subjectId);
+      if (!owner) return false;
+      return a.criteriaIds?.length ? a.criteriaIds.every(cid=>getCriterionScore(a,id,cid,owner)!==null) : getActivityScore(a,id,owner)!==null;
+    };
+    const childIds=state.subjects.filter(s=>s.parentId===sub?.id).map(s=>s.id);
+    const childActs=(state.activities||[]).filter(a=>childIds.includes(a.subjectId)&&a.code===act.code);
+    const gradedCount=relevantStudents.filter(st=>isFullyGraded(act,st.id)||(sub?.isParent&&childActs.some(a=>isFullyGraded(a,st.id)))).length;
+
+    if (!isAuto) return {effectiveStatus:act.status as 'not_open'|'open'|'pending_correction'|'corrected',isAuto:false,totalStudents:relevantStudents.length,gradedStudents:gradedCount};
 
     // 1. Una vegada tots els alumnes han estat corregits -> corregida
     const allGraded = relevantStudents.length > 0 && gradedCount === relevantStudents.length;
@@ -684,6 +525,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
         gradedStudents: gradedCount
       };
     }
+
+    if (act.startDate && getTodayStr() < act.startDate) return {effectiveStatus:'not_open' as const,isAuto:true,totalStudents:relevantStudents.length,gradedStudents:gradedCount};
 
     // 2. Data límit: oberta fins a la data límit, passada la data límit és pendent de corregir
     const todayStr = getTodayStr();
@@ -704,588 +547,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     };
   };
 
-  return (
-    <div id="section-curricular-activities" className="space-y-6">
-      
-      {/* 1. View Header with subject selection */}
-      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm border border-blue-100">
-            <CheckSquare className="w-5 h-5 animate-pulse" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900 tracking-tight">Activitats Curriculars i Avaluació</h2>
-            <p className="text-xs text-slate-400">Planifiqueu activitats, vinculeu criteris per competències, i qualifiqueu els grups.</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Assignatura:</label>
-          {validSubjects.length === 0 ? (
-            <span className="text-xs text-amber-600 bg-amber-55 px-3 py-1.5 border border-amber-100 rounded-xl">Creu primer una assignatura</span>
-          ) : (
-            <select
-              id="select-subject-activities"
-              value={selectedSubId}
-              onChange={(e) => {
-                setSelectedSubId(e.target.value);
-                setSelectedActIdForGrading(null);
-                resetForm();
-              }}
-              className="text-xs font-bold text-slate-705 p-2.5 border border-slate-200 bg-white rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
-            >
-              {validSubjects.map(s => (
-                <option key={s.id} value={s.id}>{s.name} {s.isParent ? '(Mare)' : ''}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
-
-      {activeSubject && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          
-          {/* LEFT/MID SECTION: List & Creation */}
-          <div className="xl:col-span-2 space-y-6">
-            
-            {/* MOTHER GROUP NOTICE */}
-            {activeSubject.parentId && (
-              <div className="bg-gradient-to-r from-blue-500/5 to-indigo-500/5 border border-blue-150 rounded-2xl p-4 flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Layers className="w-5 h-5 text-blue-600 shrink-0" />
-                  <div>
-                    <h5 className="text-xs font-extrabold text-blue-900 uppercase">Aquest és un Subgrup (Fill)</h5>
-                    <p className="text-[10.5px] text-blue-700 mt-0.5 leading-normal">
-                      Hereta competències de: <strong className="font-semibold">{state.subjects.find(s => s.id === activeSubject.parentId)?.name}</strong>. Podeu fer servir o importar ràpidament les activitats del grup mare.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* DIRECT & INHERITED ACTIVITIES LIST */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                  <CheckSquare className="w-5 h-5 text-blue-500 animate-spin-slow" />
-                  <span>Dossier d'Activitats ({activitiesForSubject.direct.length})</span>
-                </h3>
-                {!isEditing && (
-                  <button
-                    onClick={() => {
-                      setIsEditing(true);
-                      setEditingId(null);
-                    }}
-                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl transition-all shadow-sm shadow-blue-600/10 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Nova Activitat</span>
-                  </button>
-                )}
-              </div>
-
-              {activitiesForSubject.direct.length === 0 && activitiesForSubject.inherited.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-sm text-slate-450 italic">Sense activitats configurades per aquest grup encara.</p>
-                  {!isEditing && (
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="mt-3 text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"
-                    >
-                      Crear la primera activitat ara <Sparkles className="w-3 h-3 text-amber-500" />
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Direct Activities list */}
-                  {activitiesForSubject.direct.map((act) => {
-                    const actCriteria = state.criteria.filter(cr => act.criteriaIds?.includes(cr.id));
-                    const term = state.config.terms.find(t => t.id === act.termId);
-                    const isCurrentlyGrading = selectedActIdForGrading === act.id;
-                    const { effectiveStatus, isAuto, totalStudents, gradedStudents } = resolveActivityStatus(act);
-
-                    return (
-                      <div 
-                        key={act.id} 
-                        className={`border rounded-2xl p-4.5 transition-all ${
-                          isCurrentlyGrading 
-                            ? 'border-blue-500 ring-2 ring-blue-50/50 bg-blue-50/[0.01]' 
-                            : 'border-slate-200 hover:border-slate-300 bg-white'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[10px] font-black font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded uppercase">
-                                {act.code}
-                              </span>
-                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase inline-flex items-center gap-1 ${
-                                effectiveStatus === 'not_open' ? 'bg-slate-100 text-slate-500' :
-                                effectiveStatus === 'open' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                effectiveStatus === 'pending_correction' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                'bg-indigo-50 text-indigo-700 border border-indigo-100'
-                              }`}>
-                                <span>
-                                  {effectiveStatus === 'not_open' ? 'Pendent d\'Obrir' :
-                                   effectiveStatus === 'open' ? 'Oberta / En Curs' :
-                                   effectiveStatus === 'pending_correction' ? 'Pendent Corregir' :
-                                   'Corregida'}
-                                </span>
-                                {isAuto && (
-                                  <span className="text-[7.5px] font-black tracking-wider px-1 py-0.2 bg-black/5 rounded text-slate-600">
-                                    AUTO
-                                  </span>
-                                )}
-                              </span>
-                              {isAuto && totalStudents > 0 && (
-                                <span className="text-[10px] font-semibold text-slate-400">
-                                  ({gradedStudents}/{totalStudents} corr.)
-                                </span>
-                              )}
-                              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded leading-none">
-                                Pes: {act.weight}%
-                              </span>
-                              {term && (
-                                <span className="text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
-                                  {term.name}
-                                </span>
-                              )}
-                            </div>
-
-                            <h4 className="font-extrabold text-sm text-slate-850 mt-2 leading-tight">
-                              {act.title}
-                            </h4>
-                            
-                            {act.description && (
-                              <p className="text-[11.5px] text-slate-450 leading-relaxed mt-1">{act.description}</p>
-                            )}
-
-                            {/* Dates details */}
-                            <div className="flex items-center space-x-4 text-[10px] text-slate-400 mt-2">
-                              <span className="flex items-center gap-1">
-                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                Inici: {act.startDate} | Fi: {act.endDate}
-                              </span>
-                            </div>
-
-                            {/* Attached Resources */}
-                            {act.resources && act.resources.length > 0 && (
-                              <div className="mt-3 flex flex-wrap gap-1.5">
-                                {act.resources.map((res) => (
-                                  <a
-                                    key={res.id}
-                                    href={res.url.startsWith('http') ? res.url : `https://${res.url}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 hover:bg-slate-100 text-[10px] text-slate-500 hover:text-slate-850 rounded border border-slate-200 transition-colors"
-                                  >
-                                    <Link2 className="w-3 h-3 text-slate-400" />
-                                    <span>{res.title}</span>
-                                    <ExternalLink className="w-2.5 h-2.5 text-slate-350" />
-                                  </a>
-                                ))}
-                              </div>
-                            )}
-
-                            {/* Assigned Criteria display & mapped competencies */}
-                            {actCriteria.length > 0 && (
-                              <div className="mt-3.5 pt-3 border-t border-dashed border-slate-100 space-y-1.5">
-                                <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Criteris d'Avaluació Vinculats ({actCriteria.length})</p>
-                                <div className="flex flex-wrap gap-1">
-                                  {actCriteria.map(cr => (
-                                    <span 
-                                      key={cr.id} 
-                                      className="text-[9.5px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded px-2 py-1 flex items-center gap-1 shrink-0"
-                                      title={cr.description}
-                                    >
-                                      <Award className="w-3 h-3 text-slate-400 shrink-0" />
-                                      {cr.key}
-                                    </span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center space-x-1 shrink-0">
-                            {/* Qualification button */}
-                            <button
-                              onClick={() => {
-                                if (selectedActIdForGrading === act.id) {
-                                  setSelectedActIdForGrading(null);
-                                } else {
-                                  setSelectedActIdForGrading(act.id);
-                                }
-                              }}
-                              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all border ${
-                                isCurrentlyGrading 
-                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/15' 
-                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                              }`}
-                            >
-                              Qualificar ({Object.keys(act.grades || {}).length}/{activeStudents.length})
-                            </button>
-
-                            <button
-                              onClick={() => handleStartEdit(act)}
-                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-colors"
-                              title="Editar activitat"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActToDelete(act);
-                              }}
-                              className="p-2 text-slate-450 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
-                              title="Eliminar activitat"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* STUDENT GRADES MULTI-CRITERIA & ASPECT SUBFILES PANEL */}
-                        {isCurrentlyGrading && (
-                          <div className="mt-5 border-t border-slate-150 pt-5 space-y-3.5 bg-slate-50/70 -mx-4.5 -mb-4.5 p-4.5 rounded-b-2xl animate-slideDown">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
-                              <div>
-                                <h5 className="font-extrabold text-xs text-slate-800 flex items-center gap-1.5 uppercase tracking-wide">
-                                  <span>Tauler de Qualificació d'Alumnat</span>
-                                  <span className="text-[10px] bg-blue-100 text-blue-700 font-extrabold px-2 py-0.5 rounded-full">
-                                    {activeStudents.length} Alumnes
-                                  </span>
-                                </h5>
-                                <p className="text-[10.5px] text-slate-500 leading-relaxed mt-0.5">
-                                  Qualifica per subfiles cada criteri o aspecte amb els botons competencials (NA, AS, AN, AE) o notes numèriques.
-                                </p>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={() => exportActivitiesToExcel(activeSubject, [act], state.criteria, activeStudents)}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all flex items-center gap-1.5 shrink-0 cursor-pointer self-start sm:self-auto"
-                                title="Descarregar notes d'aquesta activitat en format Excel (.xlsx)"
-                              >
-                                <Download className="w-3.5 h-3.5" />
-                                <span>Exportar a Excel</span>
-                              </button>
-                            </div>
-
-                            {activeStudents.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic text-center py-6">No s'han trobat alumnes matriculats en aquest grup per qualificar.</p>
-                            ) : (
-                              <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
-                                {activeStudents.map((st) => {
-                                  const studentGrade: StudentActivityGrade = act.grades?.[st.id] || { comment: '' };
-                                  const critGrades = studentGrade.criteriaGrades || {};
-                                  const hasCriteria = act.criteriaIds && act.criteriaIds.length > 0;
-
-                                  return (
-                                    <div key={st.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2.5 shadow-xs">
-                                      {/* Student Header */}
-                                      <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                                        <div className="overflow-hidden">
-                                          <p className="text-xs font-bold text-slate-850 leading-tight">{st.name}</p>
-                                          <p className="text-[9.5px] font-bold font-mono text-slate-400">ID: {st.id}</p>
-                                        </div>
-
-                                        {/* Activity summary grade badge */}
-                                        <div className="shrink-0 flex items-center gap-1.5">
-                                          <span className="text-[10px] text-slate-400 font-bold uppercase">Nota Global:</span>
-                                          {studentGrade.competencialScore ? (
-                                            <span className={`px-2.5 py-1 text-xs font-black rounded-lg ${QUAL_COLORS[studentGrade.competencialScore]}`}>
-                                              {studentGrade.competencialScore} {studentGrade.score !== undefined ? `(${studentGrade.score.toFixed(1)})` : ''}
-                                            </span>
-                                          ) : studentGrade.score !== undefined ? (
-                                            <span className="px-2.5 py-1 text-xs font-black rounded-lg bg-blue-50 text-blue-800 border border-blue-200">
-                                              {studentGrade.score.toFixed(1)}/10
-                                            </span>
-                                          ) : (
-                                            <span className="text-[10px] italic text-slate-350 bg-slate-100 px-2 py-0.5 rounded">S/Q</span>
-                                          )}
-                                        </div>
-                                      </div>
-
-                                      {/* Subfiles per Criterion / Aspect */}
-                                      {hasCriteria ? (
-                                        <div className="space-y-1.5">
-                                          {act.criteriaIds.map((cid) => {
-                                            const criterion = state.criteria.find(c => c.id === cid);
-                                            const weight = act.criteriaWeights?.[cid] ?? 1;
-                                            const gType = act.criteriaGradingType?.[cid] || 'competencial';
-                                            const maxScore = act.criteriaMaxScores?.[cid] || 10;
-                                            const cGrade = critGrades[cid];
-
-                                            return (
-                                              <div 
-                                                key={cid} 
-                                                className="p-2 rounded-lg bg-slate-50/80 border border-slate-150 flex flex-col md:flex-row md:items-center justify-between gap-2"
-                                              >
-                                                <div className="flex items-center gap-2 overflow-hidden">
-                                                  <span className="px-2 py-0.5 text-[10px] font-black font-mono rounded bg-indigo-100 text-indigo-800 shrink-0">
-                                                    {criterion?.shortLabel || criterion?.key || 'CA'}
-                                                  </span>
-                                                  <span className="text-xs text-slate-700 font-medium truncate max-w-[260px]" title={criterion?.description}>
-                                                    {criterion?.description || 'Criteri d\'avaluació'}
-                                                  </span>
-                                                  <span className="text-[10px] text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded shrink-0">
-                                                    Pes: {weight}
-                                                  </span>
-                                                </div>
-
-                                                {/* Grading Control Subfile */}
-                                                <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-                                                  {gType === 'competencial' ? (
-                                                    <div className="flex items-center gap-1">
-                                                      {/* EXACT BUTTON ORDER: NA (vermell), AS (groc), AN (verd), AE (blau) */}
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleUpdateStudentCriterionGrade(st.id, cid, 'competencial', 'NA')}
-                                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                                          cGrade?.competencialScore === 'NA'
-                                                            ? 'bg-rose-500 text-white shadow-sm ring-2 ring-rose-600/30'
-                                                            : 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200'
-                                                        }`}
-                                                        title="No Assolit"
-                                                      >
-                                                        NA
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleUpdateStudentCriterionGrade(st.id, cid, 'competencial', 'AS')}
-                                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                                          cGrade?.competencialScore === 'AS'
-                                                            ? 'bg-amber-400 text-amber-950 shadow-sm ring-2 ring-amber-500/30'
-                                                            : 'bg-white hover:bg-amber-50 text-amber-800 border border-amber-200'
-                                                        }`}
-                                                        title="Assolit Satisfactòriament"
-                                                      >
-                                                        AS
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleUpdateStudentCriterionGrade(st.id, cid, 'competencial', 'AN')}
-                                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                                          cGrade?.competencialScore === 'AN'
-                                                            ? 'bg-emerald-500 text-white shadow-sm ring-2 ring-emerald-600/30'
-                                                            : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                        }`}
-                                                        title="Assolit Notable"
-                                                      >
-                                                        AN
-                                                      </button>
-                                                      <button
-                                                        type="button"
-                                                        onClick={() => handleUpdateStudentCriterionGrade(st.id, cid, 'competencial', 'AE')}
-                                                        className={`px-2.5 py-1 text-xs font-black rounded-lg transition-all cursor-pointer ${
-                                                          cGrade?.competencialScore === 'AE'
-                                                            ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-700/30'
-                                                            : 'bg-white hover:bg-blue-50 text-blue-700 border border-blue-200'
-                                                        }`}
-                                                        title="Assolit Excel·lent"
-                                                      >
-                                                        AE
-                                                      </button>
-                                                    </div>
-                                                  ) : (
-                                                    <div className="flex items-center gap-1.5">
-                                                      <input
-                                                        type="number"
-                                                        step="0.1"
-                                                        min="0"
-                                                        max={maxScore}
-                                                        placeholder={`0-${maxScore}`}
-                                                        value={cGrade?.rawScore ?? ''}
-                                                        onChange={(e) => handleUpdateStudentCriterionGrade(
-                                                          st.id, 
-                                                          cid, 
-                                                          'numeric', 
-                                                          e.target.value === '' ? undefined : parseFloat(e.target.value),
-                                                          maxScore
-                                                        )}
-                                                        className="w-16 p-1 text-xs text-center border font-bold font-mono rounded-lg bg-white border-slate-250 focus:ring-2 focus:ring-blue-500"
-                                                      />
-                                                      <span className="text-[10px] text-slate-400">/{maxScore}</span>
-                                                      {cGrade?.competencialScore && (
-                                                        <span className={`px-2 py-0.5 text-[10px] font-black rounded ${QUAL_COLORS[cGrade.competencialScore]}`}>
-                                                          {cGrade.competencialScore}
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                  )}
-                                                </div>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      ) : (
-                                        /* General / Direct score subfile when no criteria are linked */
-                                        <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-150 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                                          <span className="text-xs text-slate-600 font-bold">Puntuació directa de l'activitat:</span>
-                                          <div className="flex items-center gap-2">
-                                            <div className="flex items-center gap-1">
-                                              <input
-                                                type="number"
-                                                step="0.1"
-                                                min="0"
-                                                max="10"
-                                                placeholder="0-10"
-                                                value={studentGrade.score ?? ''}
-                                                onChange={(e) => handleUpdateDirectStudentGrade(st.id, 'score', e.target.value)}
-                                                className="w-16 p-1 text-xs text-center border font-bold font-mono rounded-lg bg-white border-slate-250 focus:ring-2 focus:ring-blue-500"
-                                              />
-                                              <span className="text-[10px] text-slate-400">/10</span>
-                                            </div>
-
-                                            {/* Exact buttons NA AS AN AE */}
-                                            <div className="flex items-center gap-1">
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUpdateDirectStudentGrade(st.id, 'competencialScore', 'NA')}
-                                                className={`px-2 py-0.5 text-xs font-black rounded ${
-                                                  studentGrade.competencialScore === 'NA'
-                                                    ? 'bg-rose-500 text-white'
-                                                    : 'bg-white hover:bg-rose-50 text-rose-700 border border-rose-200'
-                                                }`}
-                                              >
-                                                NA
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUpdateDirectStudentGrade(st.id, 'competencialScore', 'AS')}
-                                                className={`px-2 py-0.5 text-xs font-black rounded ${
-                                                  studentGrade.competencialScore === 'AS'
-                                                    ? 'bg-amber-400 text-amber-950'
-                                                    : 'bg-white hover:bg-amber-50 text-amber-800 border border-amber-200'
-                                                }`}
-                                              >
-                                                AS
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUpdateDirectStudentGrade(st.id, 'competencialScore', 'AN')}
-                                                className={`px-2 py-0.5 text-xs font-black rounded ${
-                                                  studentGrade.competencialScore === 'AN'
-                                                    ? 'bg-emerald-500 text-white'
-                                                    : 'bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200'
-                                                }`}
-                                              >
-                                                AN
-                                              </button>
-                                              <button
-                                                type="button"
-                                                onClick={() => handleUpdateDirectStudentGrade(st.id, 'competencialScore', 'AE')}
-                                                className={`px-2 py-0.5 text-xs font-black rounded ${
-                                                  studentGrade.competencialScore === 'AE'
-                                                    ? 'bg-blue-600 text-white'
-                                                    : 'bg-white hover:bg-blue-50 text-blue-700 border border-blue-200'
-                                                }`}
-                                              >
-                                                AE
-                                              </button>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )}
-
-                                      {/* Single comment space per student */}
-                                      <div className="pt-1">
-                                        <input
-                                          type="text"
-                                          placeholder="Observacions i comentaris individuals sobre l'activitat per aquest alumne/a..."
-                                          value={studentGrade.comment || ''}
-                                          onChange={(e) => handleUpdateStudentComment(st.id, e.target.value)}
-                                          className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
-                                        />
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Mother inherited list copy mechanism */}
-                  {activitiesForSubject.inherited.length > 0 && (
-                    <div className="mt-8 border-t border-slate-200/80 pt-6">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                        <Layers className="w-4 h-4 text-slate-400" />
-                        <span>Activitats del Grup Mare heretables ({activitiesForSubject.inherited.length})</span>
-                      </h4>
-                      <p className="text-[11px] text-slate-400 mb-4 font-normal">
-                        Aquestes són les activitats que has definit en el grup mare i es poden importar en un sol clic per poder qualificar els alumnes d'aquest subgrup en particular de manera individualitzada.
-                      </p>
-
-                      <div className="space-y-3">
-                        {activitiesForSubject.inherited.map((pAct) => {
-                          const pStatus = resolveActivityStatus(pAct);
-                          return (
-                            <div key={pAct.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-[9px] font-mono font-bold bg-slate-200 text-slate-655 px-1.5 py-0.5 rounded uppercase">{pAct.code}</span>
-                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase inline-flex items-center gap-1 ${
-                                    pStatus.effectiveStatus === 'open' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                    pStatus.effectiveStatus === 'pending_correction' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                    pStatus.effectiveStatus === 'corrected' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
-                                    'bg-slate-100 text-slate-500'
-                                  }`}>
-                                    <span>
-                                      {pStatus.effectiveStatus === 'open' ? 'Oberta' :
-                                       pStatus.effectiveStatus === 'pending_correction' ? 'Pendent Corregir' :
-                                       pStatus.effectiveStatus === 'corrected' ? 'Corregida' :
-                                       'Pendent d\'Obrir'}
-                                    </span>
-                                    {pStatus.isAuto && <span className="text-[7px] font-black opacity-60">AUTO</span>}
-                                  </span>
-                                  <h5 className="font-extrabold text-xs text-slate-700">{pAct.title}</h5>
-                                </div>
-                                <p className="text-[10px] text-slate-450 mt-1 truncate max-w-md">{pAct.description || 'Sense descripció.'}</p>
-                              </div>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <button
-                                  onClick={() => handleImportParentActivity(pAct)}
-                                  className="px-3 py-1.5 bg-white text-[11px] hover:bg-slate-100 text-blue-600 font-bold border border-slate-200 hover:border-blue-200 rounded-lg inline-flex items-center gap-1 transition-colors cursor-pointer"
-                                >
-                                  <Copy className="w-3.5 h-3.5" />
-                                  <span>Heretar</span>
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActToDelete(pAct);
-                                  }}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  title="Eliminar activitat del grup mare"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* RIGHT SIDEBAR PANEL: Creation form or evaluation competency analysis mapping */}
-          <div className="space-y-6">
-            
-            {/* 1. EDIT / CREATE FORM PANEL */}
-            {isEditing && (
-              <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-slideDown">
+  if (isEditing && activeSubject) return <DetailPage title={editingId ? 'Editar activitat' : 'Nova activitat'} subtitle={activeSubject.name} onBack={resetForm}><div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-slideDown">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
                     <CheckSquare className="w-4.5 h-4.5 text-blue-500 animate-bounce" />
@@ -1299,7 +561,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   </button>
                 </div>
 
-                <form onSubmit={handleSaveActivity} className="space-y-4">
+                <form onSubmit={handleSaveActivity} className="activity-editor-grid">
                   
                   {/* Activity Code */}
                   <div className="space-y-1">
@@ -1370,12 +632,13 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   {/* Trimester selection */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Trimestre</label>
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Trimestre segons el lliurament</label>
                       <select 
-                        value={activityTermId}
-                        onChange={(e) => setActivityTermId(e.target.value)}
+                        value={state.config.terms.find(t => activityEndDate >= t.startDate && activityEndDate <= t.endDate)?.id || ''}
+                        disabled
                         className="w-full text-xs font-bold p-2 border border-slate-250 bg-slate-50/50 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                       >
+                        <option value="">Fora dels trimestres</option>
                         {state.config.terms.map(t => (
                           <option key={t.id} value={t.id}>{t.name}</option>
                         ))}
@@ -1383,11 +646,11 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                     </div>
 
                     <div className="space-y-1">
-                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Pes d'Activitat (%)</label>
+                      <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Pes relatiu de l’activitat</label>
                       <input 
                         type="number" 
-                        min="1"
-                        max="100"
+                        min="0"
+                        step="0.1"
                         required
                         value={activityWeight}
                         onChange={(e) => setActivityWeight(Number(e.target.value) || 0)}
@@ -1519,7 +782,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                     {relevantCriteria.length === 0 ? (
                       <p className="text-[10.5px] text-amber-600 bg-amber-50 px-2.5 py-2 border border-amber-100 rounded-lg">Creeu criteris a Configuració de competències d'aquesta assignatura per poder vincular-los.</p>
                     ) : (
-                      <div className="border border-slate-200 rounded-xl max-h-48 overflow-y-auto p-2 bg-slate-50/50 space-y-1">
+                      <div className="border border-slate-200 rounded-xl  p-2 bg-slate-50/50 space-y-1">
                         {relevantCriteria.map((cri) => {
                           const isChecked = selectedCritIds.includes(cri.id);
                           return (
@@ -1556,7 +819,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                       <p className="text-[9.5px] text-slate-450 leading-tight">
                         Defineix el pes de cada criteri en l'activitat i si s'avalua de forma competencial (NA-AE) o numèrica (amb màxim proratejat a 0-4).
                       </p>
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1 pt-1">
+                      <div className="space-y-2  pr-1 pt-1">
                         {selectedCritIds.map((cid) => {
                           const cr = state.criteria.find(c => c.id === cid);
                           const weight = criteriaWeights[cid] ?? 1;
@@ -1574,17 +837,19 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                                 </span>
                               </div>
 
+                              <label className="ds-field">Text per identificar aquest criteri quan avalues<input value={criteriaCustomLabels[cid] ?? cr?.shortLabel ?? cr?.key ?? ''} onChange={e => setCriteriaCustomLabels({...criteriaCustomLabels, [cid]:e.target.value})} placeholder="Ex.: P1-CA1 · Expressió oral" /></label>
+                              <div className="flex gap-2"><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
                               <div className="grid grid-cols-3 gap-1.5 items-center">
                                 <div>
                                   <label className="text-[8.5px] font-bold text-slate-400 block uppercase">Pes</label>
                                   <input
                                     type="number"
-                                    min="0.1"
+                                    min="0"
                                     step="0.1"
                                     value={weight}
                                     onChange={(e) => setCriteriaWeights({
                                       ...criteriaWeights,
-                                      [cid]: parseFloat(e.target.value) || 1
+                                      [cid]: Number(e.target.value)
                                     })}
                                     className="w-full text-xs font-mono font-bold p-1 border border-slate-200 rounded text-center bg-slate-50/50"
                                   />
@@ -1615,7 +880,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                                       value={maxSc}
                                       onChange={(e) => setCriteriaMaxScores({
                                         ...criteriaMaxScores,
-                                        [cid]: parseFloat(e.target.value) || 10
+                                        [cid]: Math.max(0.01, Number(e.target.value))
                                       })}
                                       className="w-full text-xs font-mono font-bold p-1 border border-slate-200 rounded text-center bg-slate-50/50"
                                     />
@@ -1632,19 +897,6 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   )}
 
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {editingId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const act = existingActivities.find(a => a.id === editingId);
-                          if (act) setActToDelete(act);
-                        }}
-                        className="px-3 py-2 text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Eliminar</span>
-                      </button>
-                    )}
                     <div className="flex items-center space-x-2 ml-auto">
                       <button
                         type="button"
@@ -1663,8 +915,327 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   </div>
                 </form>
               </div>
+</DetailPage>;
+  if (gradingActivity && activeSubject) return <ActivityGradePage state={state} activity={gradingActivity} subject={{...activeSubject, students:activeStudents}} onChange={onChangeState} onBack={() => setSelectedActIdForGrading(null)} />;
+
+  return (
+    <div id="section-curricular-activities" className="space-y-6">
+      
+      {/* 1. View Header with subject selection */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 shadow-sm border border-blue-100">
+            <CheckSquare className="w-5 h-5 animate-pulse" />
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-slate-900 tracking-tight">Activitats Curriculars i Avaluació</h2>
+            <p className="text-xs text-slate-400">Planifiqueu activitats, vinculeu criteris per competències, i qualifiqueu els grups.</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <label className="text-xs font-bold text-slate-500 uppercase tracking-wide">Assignatura:</label>
+          {validSubjects.length === 0 ? (
+            <span className="text-xs text-amber-600 bg-amber-55 px-3 py-1.5 border border-amber-100 rounded-xl">Creu primer una assignatura</span>
+          ) : (
+            <select
+              id="select-subject-activities"
+              value={selectedSubId}
+              onChange={(e) => {
+                setSelectedSubId(e.target.value);
+                setSelectedActIdForGrading(null);
+                resetForm();
+              }}
+              className="text-xs font-bold text-slate-705 p-2.5 border border-slate-200 bg-white rounded-xl shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none cursor-pointer"
+            >
+              {validSubjects.map(s => (
+                <option key={s.id} value={s.id}>{s.name} {s.isParent ? '(Mare)' : ''}</option>
+              ))}
+            </select>
+          )}
+        </div>
+      </div>
+
+      {activeSubject && (
+        <div className="grid grid-cols-1 gap-4">
+          
+          {/* LEFT/MID SECTION: List & Creation */}
+          <div className="space-y-4">
+            
+            {/* MOTHER GROUP NOTICE */}
+            {activeSubject.parentId && (
+              <div className="bg-gradient-to-r from-blue-500/5 to-indigo-500/5 border border-blue-150 rounded-2xl p-4 flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Layers className="w-5 h-5 text-blue-600 shrink-0" />
+                  <div>
+                    <h5 className="text-xs font-extrabold text-blue-900 uppercase">Aquest és un Subgrup (Fill)</h5>
+                    <p className="text-[10.5px] text-blue-700 mt-0.5 leading-normal">
+                      Hereta competències de: <strong className="font-semibold">{state.subjects.find(s => s.id === activeSubject.parentId)?.name}</strong>. Podeu fer servir o importar ràpidament les activitats del grup mare.
+                    </p>
+                  </div>
+                </div>
+              </div>
             )}
 
+            {/* DIRECT & INHERITED ACTIVITIES LIST */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-blue-500 animate-spin-slow" />
+                  <span>Dossier d'Activitats ({activitiesForSubject.direct.length})</span>
+                </h3>
+                {!isEditing && (
+                  <button
+                    onClick={() => {
+                      setIsEditing(true);
+                      setEditingId(null);
+                    }}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl transition-all shadow-sm shadow-blue-600/10 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Nova Activitat</span>
+                  </button>
+                )}
+              </div>
+
+              {activitiesForSubject.direct.length === 0 && activitiesForSubject.inherited.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-sm text-slate-450 italic">Sense activitats configurades per aquest grup encara.</p>
+                  {!isEditing && (
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="mt-3 text-xs font-semibold text-blue-600 hover:underline inline-flex items-center gap-1"
+                    >
+                      Crear la primera activitat ara <Sparkles className="w-3 h-3 text-amber-500" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {/* Direct Activities list */}
+                  {activitiesForSubject.direct.map((act) => {
+                    const actCriteria = state.criteria.filter(cr => act.criteriaIds?.includes(cr.id));
+                    const term = state.config.terms.find(t => t.id === act.termId);
+                    const isCurrentlyGrading = selectedActIdForGrading === act.id;
+                    const { effectiveStatus, isAuto, totalStudents, gradedStudents } = resolveActivityStatus(act);
+
+                    return (
+                      <div 
+                        key={act.id} 
+                        className={`border rounded-2xl p-4.5 transition-all ${
+                          isCurrentlyGrading 
+                            ? 'border-blue-500 ring-2 ring-blue-50/50 bg-blue-50/[0.01]' 
+                            : 'border-slate-200 hover:border-slate-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-black font-mono bg-blue-100 text-blue-800 px-2 py-0.5 rounded uppercase">
+                                {act.code}
+                              </span>
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded uppercase inline-flex items-center gap-1 ${
+                                effectiveStatus === 'not_open' ? 'bg-slate-100 text-slate-500' :
+                                effectiveStatus === 'open' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                effectiveStatus === 'pending_correction' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                'bg-indigo-50 text-indigo-700 border border-indigo-100'
+                              }`}>
+                                <span>
+                                  {effectiveStatus === 'not_open' ? 'Pendent d\'Obrir' :
+                                   effectiveStatus === 'open' ? 'Oberta / En Curs' :
+                                   effectiveStatus === 'pending_correction' ? 'Pendent Corregir' :
+                                   'Corregida'}
+                                </span>
+                                {isAuto && (
+                                  <span className="text-[7.5px] font-black tracking-wider px-1 py-0.2 bg-black/5 rounded text-slate-600">
+                                    AUTO
+                                  </span>
+                                )}
+                              </span>
+                              {isAuto && totalStudents > 0 && (
+                                <span className="text-[10px] font-semibold text-slate-400">
+                                  ({gradedStudents}/{totalStudents} corr.)
+                                </span>
+                              )}
+                              <span className="text-[10px] font-semibold text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded leading-none">
+                                Pes: {act.weight}
+                              </span>
+                              {term && (
+                                <span className="text-[10px] text-slate-400 font-bold bg-slate-50 border border-slate-100 px-1.5 py-0.5 rounded">
+                                  {term.name}
+                                </span>
+                              )}
+                            </div>
+
+                            <h4 className="font-extrabold text-sm text-slate-850 mt-2 leading-tight">
+                              {act.title}
+                            </h4>
+                            
+                            {act.description && (
+                              <p className="text-[11.5px] text-slate-450 leading-relaxed mt-1">{act.description}</p>
+                            )}
+
+                            {/* Dates details */}
+                            <div className="flex items-center space-x-4 text-[10px] text-slate-400 mt-2">
+                              <span className="flex items-center gap-1">
+                                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                                Inici: {act.startDate} | Fi: {act.endDate}
+                              </span>
+                            </div>
+
+                            {/* Attached Resources */}
+                            {act.resources && act.resources.length > 0 && (
+                              <div className="mt-3 flex flex-wrap gap-1.5">
+                                {act.resources.map((res) => (
+                                  <a
+                                    key={res.id}
+                                    href={res.url.startsWith('http') ? res.url : `https://${res.url}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-50 hover:bg-slate-100 text-[10px] text-slate-500 hover:text-slate-850 rounded border border-slate-200 transition-colors"
+                                  >
+                                    <Link2 className="w-3 h-3 text-slate-400" />
+                                    <span>{res.title}</span>
+                                    <ExternalLink className="w-2.5 h-2.5 text-slate-350" />
+                                  </a>
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Assigned Criteria display & mapped competencies */}
+                            {actCriteria.length > 0 && (
+                              <div className="mt-3.5 pt-3 border-t border-dashed border-slate-100 space-y-1.5">
+                                <p className="text-[9.5px] font-extrabold text-slate-400 uppercase tracking-widest">Criteris d'Avaluació Vinculats ({actCriteria.length})</p>
+                                <div className="flex flex-wrap gap-1">
+                                  {actCriteria.map(cr => (
+                                    <span 
+                                      key={cr.id} 
+                                      className="text-[9.5px] font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded px-2 py-1 flex items-center gap-1 shrink-0"
+                                      title={cr.description}
+                                    >
+                                      <Award className="w-3 h-3 text-slate-400 shrink-0" />
+                                      {cr.key}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-1 shrink-0">
+                            {/* Qualification button */}
+                            <button
+                              onClick={() => {
+                                if (selectedActIdForGrading === act.id) {
+                                  setSelectedActIdForGrading(null);
+                                } else {
+                                  setSelectedActIdForGrading(act.id);
+                                }
+                              }}
+                              className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all border ${
+                                isCurrentlyGrading 
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm shadow-blue-500/15' 
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              Qualificar ({gradedStudents}/{activeStudents.length})
+                            </button>
+
+                            <button
+                              onClick={() => handleStartEdit(act)}
+                              className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-50 rounded-xl transition-colors"
+                              title="Editar activitat"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActToDelete(act);
+                              }}
+                              className="p-2 text-slate-450 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer"
+                              title="Eliminar activitat"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+                    );
+                  })}
+
+                  {/* Mother inherited list copy mechanism */}
+                  {activitiesForSubject.inherited.length > 0 && (
+                    <div className="mt-8 border-t border-slate-200/80 pt-6">
+                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-slate-400" />
+                        <span>Activitats del Grup Mare heretables ({activitiesForSubject.inherited.length})</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-400 mb-4 font-normal">
+                        Aquestes són les activitats que has definit en el grup mare i es poden importar en un sol clic per poder qualificar els alumnes d'aquest subgrup en particular de manera individualitzada.
+                      </p>
+
+                      <div className="space-y-3">
+                        {activitiesForSubject.inherited.map((pAct) => {
+                          const pStatus = resolveActivityStatus(pAct);
+                          return (
+                            <div key={pAct.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                              <div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-[9px] font-mono font-bold bg-slate-200 text-slate-655 px-1.5 py-0.5 rounded uppercase">{pAct.code}</span>
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase inline-flex items-center gap-1 ${
+                                    pStatus.effectiveStatus === 'open' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
+                                    pStatus.effectiveStatus === 'pending_correction' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
+                                    pStatus.effectiveStatus === 'corrected' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
+                                    'bg-slate-100 text-slate-500'
+                                  }`}>
+                                    <span>
+                                      {pStatus.effectiveStatus === 'open' ? 'Oberta' :
+                                       pStatus.effectiveStatus === 'pending_correction' ? 'Pendent Corregir' :
+                                       pStatus.effectiveStatus === 'corrected' ? 'Corregida' :
+                                       'Pendent d\'Obrir'}
+                                    </span>
+                                    {pStatus.isAuto && <span className="text-[7px] font-black opacity-60">AUTO</span>}
+                                  </span>
+                                  <h5 className="font-extrabold text-xs text-slate-700">{pAct.title}</h5>
+                                </div>
+                                <p className="text-[10px] text-slate-450 mt-1 truncate max-w-md">{pAct.description || 'Sense descripció.'}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  onClick={() => handleImportParentActivity(pAct)}
+                                  className="px-3 py-1.5 bg-white text-[11px] hover:bg-slate-100 text-blue-600 font-bold border border-slate-200 hover:border-blue-200 rounded-lg inline-flex items-center gap-1 transition-colors cursor-pointer"
+                                >
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span>Heretar</span>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActToDelete(pAct);
+                                  }}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                  title="Eliminar activitat del grup mare"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT SIDEBAR PANEL: Creation form or evaluation competency analysis mapping */}
+          <div className="space-y-6">
+            
             {/* 2. CURRICULAR COMPETENCY MAP ACCORDING TO ACTIVITIES */}
             {/* "L'assignació de competències es fa a partir dels criteris d'avaluació que s'assignin a les activitats." */}
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">

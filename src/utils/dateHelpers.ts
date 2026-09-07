@@ -235,7 +235,7 @@ export function getLastDayBeforeDeliveryActivities(
     if (act.endDate < dateStr) continue;
     
     // Sessions programades fins a la data de lliurament (inclusiu)
-    const eligibleSessions = sessions.filter(s => s.date <= act.endDate);
+    const eligibleSessions = sessions.filter(s => s.date <= act.endDate && (!act.startDate || s.date >= act.startDate));
     if (eligibleSessions.length === 0) continue;
     
     const lastSession = eligibleSessions[eligibleSessions.length - 1];

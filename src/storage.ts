@@ -94,7 +94,7 @@ export async function loadFromFileHandle(fileHandle: any): Promise<AppState | nu
     const contents = await file.text();
     const state = JSON.parse(contents);
     if (validateState(state)) {
-      return state;
+      return normalizeState(state);
     }
   } catch (e) {
     console.error('Error llegint el fitxer JSON enllaçat:', e);
@@ -129,7 +129,7 @@ export function loadStateFromLocalStorage(): AppState {
     if (raw) {
       const state = JSON.parse(raw);
       if (validateState(state)) {
-        return mergeMissingDefaultState(state);
+        return normalizeState(state);
       }
     }
   } catch (e) {
@@ -139,10 +139,13 @@ export function loadStateFromLocalStorage(): AppState {
 }
 
 // Merge state with potential missing root fields
-function mergeMissingDefaultState(loadedState: any): AppState {
+export function normalizeState(loadedState: any): AppState {
   const d = getInitialState();
   return {
+    ...loadedState,
     config: {
+      ...d.config,
+      ...loadedState.config,
       startDate: loadedState.config?.startDate || d.config.startDate,
       endDate: loadedState.config?.endDate || d.config.endDate,
       holidays: loadedState.config?.holidays || d.config.holidays,
@@ -157,6 +160,7 @@ function mergeMissingDefaultState(loadedState: any): AppState {
     sessionLogs: loadedState.sessionLogs || d.sessionLogs,
     plans: loadedState.plans || d.plans,
     activities: loadedState.activities || d.activities || [],
+    termGradesRecords: loadedState.termGradesRecords || [],
   };
 }
 

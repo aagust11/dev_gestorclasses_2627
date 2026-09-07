@@ -141,481 +141,198 @@ export function competencialToScore(
   return values.NA;
 }
 
-/**
- * Filter activities applicable to a given period (term or annual)
- */
-export function filterActivitiesForPeriod(
-  activities: CurricularActivity[],
-  subjectId: string,
-  periodId: string, // 't1', 't2', 't3' or 'annual'
-  terms: Term[]
-): CurricularActivity[] {
-  // Direct activities for this subject
-  const subActs = activities.filter(a => a.subjectId === subjectId);
+export type CalculationMode = 'mean' | 'median' | 'mode';
+export const QUAL_ORDER = ['NA', 'AS', 'AN', 'AE'] as const;
+const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+const valid = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+const clamp = (n: number, max = 4) => Math.max(0, Math.min(max, n));
 
-  if (periodId === 'annual') {
-    return subActs;
+export function getCompSettings(subject?: Subject): CompetencyEvaluationSettings {
+  return {
+    values: { ...DEFAULT_COMP_SETTINGS.values, ...subject?.compSettings?.values },
+    thresholds: { ...DEFAULT_COMP_SETTINGS.thresholds, ...subject?.compSettings?.thresholds },
+    maxFailedCompetencies: subject?.compSettings?.maxFailedCompetencies ?? DEFAULT_COMP_SETTINGS.maxFailedCompetencies,
+  };
+}
+
+// All three methods honour relative weights. Tied modes choose the lower score.
+export function weightedStatistic(entries: { score: number; weight: number }[], mode: CalculationMode = 'mean'): number | null {
+  const xs = entries.filter(x => valid(x.score) && valid(x.weight) && x.weight > 0).sort((a,b) => a.score-b.score);
+  if (!xs.length) return null;
+  const total = xs.reduce((s,x) => s+x.weight, 0);
+  if (mode === 'mean') return xs.reduce((s,x) => s+x.score*x.weight, 0)/total;
+  if (mode === 'mode') {
+    const weights = new Map<number,number>();
+    xs.forEach(x => weights.set(round(x.score), (weights.get(round(x.score)) || 0)+x.weight));
+    let best = xs[0].score, max = -1;
+    weights.forEach((w,score) => { if (w > max) { best=score; max=w; } });
+    return best;
   }
+  let cumulative = 0;
+  for (let i=0;i<xs.length;i++) {
+    cumulative += xs[i].weight;
+    if (Math.abs(cumulative-total/2) < 1e-9 && xs[i+1]) return (xs[i].score+xs[i+1].score)/2;
+    if (cumulative > total/2) return xs[i].score;
+  }
+  return xs[xs.length-1].score;
+}
 
+export function filterActivitiesForPeriod(activities: CurricularActivity[], subjectId: string, periodId: string, terms: Term[]): CurricularActivity[] {
+  const acts = activities.filter(a => a.subjectId === subjectId);
+  if (periodId === 'annual') return acts;
   const term = terms.find(t => t.id === periodId);
-  if (!term) return subActs;
-
-  return subActs.filter(a => {
-    // Only count activities where the deadline is within the term dates (or matches termId)
-    if (a.termId === periodId) return true;
-    if (a.endDate && a.endDate >= term.startDate && a.endDate <= term.endDate) return true;
-    return false;
-  });
+  if (!term) return [];
+  return acts.filter(a => !!a.endDate && a.endDate >= term.startDate && a.endDate <= term.endDate);
 }
 
-/**
- * Calculate grades for competencial subject
- */
-export function calculateCompetencialTermGrades(
-  subject: Subject,
-  relevantActivities: CurricularActivity[],
-  competencies: Competency[],
-  criteria: EvalCriterion[],
-  existingStudentData?: Record<string, TermStudentGrades>
-): Record<string, TermStudentGrades> {
-  const result: Record<string, TermStudentGrades> = {};
-  const compSettings = subject.compSettings || DEFAULT_COMP_SETTINGS;
-  const students = subject.students || [];
-
-  // Index criteria by ID
-  const criteriaMap = new Map<string, EvalCriterion>();
-  criteria.forEach(c => criteriaMap.set(c.id, c));
-
-  // Index competencies
-  const compCriteriaMap = new Map<string, EvalCriterion[]>();
-  competencies.forEach(comp => {
-    const compCrit = criteria.filter(cr => cr.competencyId === comp.id);
-    compCriteriaMap.set(comp.id, compCrit);
-  });
-
-  students.forEach(student => {
-    const existing = existingStudentData?.[student.id];
-    const criteriaResults: Record<string, { score: number; qual: string; isManual?: boolean }> = {};
-
-    // 1. Calculate each Criterion grade
-    criteria.forEach(crit => {
-      // If manual override exists, preserve it unless recalced
-      if (existing?.criteria?.[crit.id]?.isManual) {
-        criteriaResults[crit.id] = { ...existing.criteria[crit.id] };
-        return;
-      }
-
-      let weightedSum = 0;
-      let totalWeight = 0;
-
-      relevantActivities.forEach(act => {
-        if (!act.criteriaIds.includes(crit.id)) return;
-
-        const grade = act.grades?.[student.id];
-        if (!grade) return;
-
-        const critGrade = grade.criteriaGrades?.[crit.id];
-        let score0to4: number | null = null;
-
-        if (critGrade) {
-          if (critGrade.competencialScore) {
-            score0to4 = competencialToScore(critGrade.competencialScore, compSettings.values);
-          } else if (typeof critGrade.rawScore === 'number') {
-            const maxScore = act.criteriaMaxScores?.[crit.id] || 10;
-            score0to4 = (critGrade.rawScore / maxScore) * 4;
-          } else if (typeof critGrade.normalizedScore === 'number') {
-            score0to4 = critGrade.normalizedScore;
-          }
-        } else if (typeof grade.score === 'number') {
-          // Fallback legacy global activity score (0-10 -> 0-4)
-          score0to4 = (grade.score / 10) * 4;
-        } else if (grade.competencialScore) {
-          score0to4 = competencialToScore(grade.competencialScore, compSettings.values);
-        }
-
-        if (score0to4 !== null && !isNaN(score0to4)) {
-          const actWeight = act.weight || 1;
-          const critWeight = act.criteriaWeights?.[crit.id] ?? 1;
-          const combinedWeight = actWeight * critWeight;
-
-          weightedSum += score0to4 * combinedWeight;
-          totalWeight += combinedWeight;
-        }
-      });
-
-      if (totalWeight > 0) {
-        const avgScore = parseFloat((weightedSum / totalWeight).toFixed(2));
-        criteriaResults[crit.id] = {
-          score: avgScore,
-          qual: scoreToCompetencial(avgScore, compSettings.thresholds)
-        };
-      } else if (existing?.criteria?.[crit.id]) {
-        criteriaResults[crit.id] = { ...existing.criteria[crit.id] };
-      } else {
-        criteriaResults[crit.id] = {
-          score: compSettings.values.NA,
-          qual: 'NA'
-        };
-      }
-    });
-
-    // 2. Calculate each Competency grade
-    const competencyResults: Record<string, { score: number; qual: string; isManual?: boolean }> = {};
-    const competencyScoresList: number[] = [];
-    const competencyQualsList: string[] = [];
-    let failedCECount = 0;
-
-    competencies.forEach(comp => {
-      if (existing?.competencies?.[comp.id]?.isManual) {
-        competencyResults[comp.id] = { ...existing.competencies[comp.id] };
-        competencyScoresList.push(existing.competencies[comp.id].score);
-        competencyQualsList.push(existing.competencies[comp.id].qual);
-        if (existing.competencies[comp.id].qual === 'NA') {
-          failedCECount++;
-        }
-        return;
-      }
-
-      const compCrits = compCriteriaMap.get(comp.id) || [];
-      const critScores: number[] = [];
-
-      compCrits.forEach(cr => {
-        const res = criteriaResults[cr.id];
-        if (res && typeof res.score === 'number') {
-          critScores.push(res.score);
-        }
-      });
-
-      if (critScores.length > 0) {
-        const compAvg = calculateMean(critScores) || compSettings.values.NA;
-        const compQual = scoreToCompetencial(compAvg, compSettings.thresholds);
-
-        competencyResults[comp.id] = {
-          score: compAvg,
-          qual: compQual
-        };
-        competencyScoresList.push(compAvg);
-        competencyQualsList.push(compQual);
-        if (compQual === 'NA') {
-          failedCECount++;
-        }
-      } else {
-        competencyResults[comp.id] = {
-          score: compSettings.values.NA,
-          qual: 'NA'
-        };
-        competencyScoresList.push(compSettings.values.NA);
-        competencyQualsList.push('NA');
-        failedCECount++;
-      }
-    });
-
-    // 3. Final Overall Grade
-    const meanFinal = calculateMean(competencyScoresList) || compSettings.values.NA;
-    const medianFinal = calculateMedian(competencyScoresList) || compSettings.values.NA;
-    const modeFinal = calculateMode(competencyQualsList) || 'NA';
-
-    const maxFailed = compSettings.maxFailedCompetencies;
-    const autoFailed = maxFailed !== undefined && maxFailed > 0 && failedCECount >= maxFailed;
-
-    let finalQual = scoreToCompetencial(meanFinal, compSettings.thresholds);
-    if (autoFailed) {
-      finalQual = 'NA';
+// Raw numeric scores take precedence over their cached qualitative equivalent.
+export function getCriterionScore(act: CurricularActivity, studentId: string, criterionId: string, subject: Subject): number | null {
+  const settings = getCompSettings(subject), g = act.grades?.[studentId], cg = g?.criteriaGrades?.[criterionId];
+  if (cg) {
+    if (valid(cg.rawScore)) {
+      const max = act.criteriaMaxScores?.[criterionId] ?? cg.maxScore ?? 10;
+      return max > 0 ? clamp(cg.rawScore/max*4) : null;
     }
-
-    // Check if final was manually set
-    const finalScore = existing?.finalGrade?.isManual ? existing.finalGrade.score : meanFinal;
-    const finalQualResult = existing?.finalGrade?.isManual ? existing.finalGrade.qual : finalQual;
-
-    result[student.id] = {
-      criteria: criteriaResults,
-      competencies: competencyResults,
-      finalGrade: {
-        score: finalScore,
-        qual: finalQualResult,
-        isManual: existing?.finalGrade?.isManual,
-        failedCECount,
-        autoFailed
-      },
-      metrics: {
-        mean: meanFinal,
-        median: medianFinal,
-        mode: modeFinal
-      }
-    };
-  });
-
-  return result;
-}
-
-/**
- * Calculate grades for numeric subject with items
- */
-export function calculateNumericTermGrades(
-  subject: Subject,
-  relevantActivities: CurricularActivity[],
-  existingStudentData?: Record<string, TermStudentGrades>
-): Record<string, TermStudentGrades> {
-  const result: Record<string, TermStudentGrades> = {};
-  const students = subject.students || [];
-  const items = subject.numericItems || [];
-
-  students.forEach(student => {
-    const existing = existingStudentData?.[student.id];
-    const itemResults: Record<string, { score: number; isManual?: boolean }> = {};
-    let weightedItemSum = 0;
-    let totalItemWeight = 0;
-    const itemScoresList: number[] = [];
-
-    items.forEach(item => {
-      if (existing?.items?.[item.id]?.isManual) {
-        itemResults[item.id] = { ...existing.items[item.id] };
-        weightedItemSum += existing.items[item.id].score * (item.weight || 0);
-        totalItemWeight += item.weight || 0;
-        itemScoresList.push(existing.items[item.id].score);
-        return;
-      }
-
-      // Activities linked to this item
-      const itemActs = relevantActivities.filter(a => a.numericItemId === item.id);
-      let actSum = 0;
-      let actWeightSum = 0;
-
-      itemActs.forEach(act => {
-        const grade = act.grades?.[student.id];
-        if (!grade) return;
-
-        let numScore: number | null = null;
-        if (typeof grade.score === 'number') {
-          numScore = grade.score;
-        } else if (grade.competencialScore) {
-          // Map competencial to 10
-          if (grade.competencialScore === 'AE') numScore = 10;
-          else if (grade.competencialScore === 'AN') numScore = 7.5;
-          else if (grade.competencialScore === 'AS') numScore = 5.0;
-          else numScore = 2.5;
-        }
-
-        if (numScore !== null) {
-          const w = act.weight || 1;
-          actSum += numScore * w;
-          actWeightSum += w;
-        }
-      });
-
-      const itemScore = actWeightSum > 0 ? parseFloat((actSum / actWeightSum).toFixed(2)) : 0;
-      itemResults[item.id] = { score: itemScore };
-      itemScoresList.push(itemScore);
-
-      weightedItemSum += itemScore * (item.weight || 0);
-      totalItemWeight += item.weight || 0;
-    });
-
-    const finalNumeric = totalItemWeight > 0 ? parseFloat((weightedItemSum / totalItemWeight).toFixed(2)) : 0;
-    const mean = calculateMean(itemScoresList) || 0;
-    const median = calculateMedian(itemScoresList) || 0;
-    const mode = calculateMode(itemScoresList) || 0;
-
-    let qualText = finalNumeric >= 8.5 ? 'Excel·lent' :
-                   finalNumeric >= 7.0 ? 'Notable' :
-                   finalNumeric >= 5.0 ? 'Aprovat' : 'Suspès';
-
-    result[student.id] = {
-      criteria: {},
-      competencies: {},
-      items: itemResults,
-      finalGrade: {
-        score: existing?.finalGrade?.isManual ? existing.finalGrade.score : finalNumeric,
-        qual: existing?.finalGrade?.isManual ? existing.finalGrade.qual : qualText,
-        isManual: existing?.finalGrade?.isManual
-      },
-      metrics: {
-        mean,
-        median,
-        mode
-      }
-    };
-  });
-
-  return result;
-}
-
-/**
- * EXCEL EXPORT: Term or Annual Grades Table
- */
-export function exportTermGradesToExcel(
-  subject: Subject,
-  periodName: string,
-  criteria: EvalCriterion[],
-  competencies: Competency[],
-  gradesData: Record<string, TermStudentGrades>
-) {
-  const isCompetencial = subject.evaluationType !== 'numeric';
-  const students = subject.students || [];
-
-  const headers = ['ID Alumne', 'Nom Alumne'];
-
-  if (isCompetencial) {
-    // Criteria headers
-    criteria.forEach(cr => {
-      headers.push(`CA: ${cr.shortLabel || cr.key} (${cr.key})`);
-    });
-
-    // Competencies headers
-    competencies.forEach(comp => {
-      headers.push(`CE: ${comp.key} (Nota 0-4)`);
-      headers.push(`CE: ${comp.key} (Qual.)`);
-    });
-
-    headers.push('CE Suspeses (NA)');
-    headers.push('Mitjana Final');
-    headers.push('Mediana Final');
-    headers.push('Moda Final');
-    headers.push('Qualificació Final');
-  } else {
-    // Numeric items headers
-    (subject.numericItems || []).forEach(it => {
-      headers.push(`Item: ${it.name} (${it.weight}%)`);
-    });
-    headers.push('Mitjana Items');
-    headers.push('Mediana Items');
-    headers.push('Moda Items');
-    headers.push('Nota Final (0-10)');
-    headers.push('Qualificació');
+    if (cg.competencialScore) return settings.values[cg.competencialScore];
+    if (valid(cg.normalizedScore)) return clamp(cg.normalizedScore);
+    return null;
   }
-
-  const rows: any[][] = [];
-
-  students.forEach(st => {
-    const data = gradesData[st.id];
-    const row: any[] = [st.id, st.name];
-
-    if (!data) {
-      rows.push(row);
-      return;
-    }
-
-    if (isCompetencial) {
-      criteria.forEach(cr => {
-        const crData = data.criteria?.[cr.id];
-        row.push(crData ? `${crData.score} (${crData.qual})` : '-');
-      });
-
-      competencies.forEach(comp => {
-        const compData = data.competencies?.[comp.id];
-        row.push(compData ? compData.score : '-');
-        row.push(compData ? compData.qual : '-');
-      });
-
-      row.push(data.finalGrade?.failedCECount ?? 0);
-      row.push(data.metrics?.mean ?? data.finalGrade?.score ?? '-');
-      row.push(data.metrics?.median ?? '-');
-      row.push(data.metrics?.mode ?? '-');
-      row.push(data.finalGrade?.qual ?? '-');
-    } else {
-      (subject.numericItems || []).forEach(it => {
-        const itData = data.items?.[it.id];
-        row.push(itData ? itData.score : 0);
-      });
-      row.push(data.metrics?.mean ?? '-');
-      row.push(data.metrics?.median ?? '-');
-      row.push(data.metrics?.mode ?? '-');
-      row.push(data.finalGrade?.score ?? '-');
-      row.push(data.finalGrade?.qual ?? '-');
-    }
-
-    rows.push(row);
-  });
-
-  // Create workbook
-  const wb = XLSX.utils.book_new();
-  const wsData = [
-    [`DocentSuite - Qualificacions: ${subject.name} - ${periodName}`],
-    [`Generat el: ${new Date().toLocaleDateString('ca-ES')} ${new Date().toLocaleTimeString('ca-ES')}`],
-    [],
-    headers,
-    ...rows
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  XLSX.utils.book_append_sheet(wb, ws, 'Qualificacions');
-
-  const fileName = `Qualificacions_${subject.name.replace(/[^a-zA-Z0-9]/g, '_')}_${periodName.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  // A partially graded activity must not fill its ungraded criteria with its summary.
+  if (g?.criteriaGrades) return null;
+  if (act.numericGradingType === 'competencial' && g?.competencialScore) return settings.values[g.competencialScore];
+  if (valid(g?.score)) return clamp(g.score/10*4);
+  return g?.competencialScore ? settings.values[g.competencialScore] : null;
 }
 
-/**
- * EXCEL EXPORT: Activities Grid Table
- */
-export function exportActivitiesToExcel(
-  subject: Subject,
-  activities: CurricularActivity[],
-  criteria: EvalCriterion[],
-  students: Subject['students']
-) {
-  const wb = XLSX.utils.book_new();
-  const headers = ['ID Alumne', 'Nom Alumne'];
+export function getActivityScore(act: CurricularActivity, studentId: string, subject: Subject): number | null {
+  if (act.criteriaIds?.length) {
+    return weightedStatistic(act.criteriaIds.map(id => ({ score: getCriterionScore(act,studentId,id,subject), weight: act.criteriaWeights?.[id] ?? 1 })).filter(x => valid(x.score)));
+  }
+  const g=act.grades?.[studentId], settings=getCompSettings(subject);
+  if (act.numericGradingType === 'competencial' && g?.competencialScore) return settings.values[g.competencialScore];
+  if (valid(g?.score)) return clamp(g.score/10*4);
+  return g?.competencialScore ? settings.values[g.competencialScore] : null;
+}
 
-  activities.forEach(act => {
-    if (act.criteriaIds && act.criteriaIds.length > 0) {
-      act.criteriaIds.forEach(critId => {
-        const cr = criteria.find(c => c.id === critId);
-        headers.push(`${act.code} [${cr?.shortLabel || cr?.key || critId}]`);
-      });
-    } else {
-      headers.push(`${act.code}: ${act.title}`);
+function computeCompetencial(subject: Subject, activities: CurricularActivity[], competencies: Competency[], criteria: EvalCriterion[], existing: Record<string,TermStudentGrades> | undefined, mode: CalculationMode) {
+  const result: Record<string,TermStudentGrades>={}, settings=getCompSettings(subject);
+  const asGrade=(score: number) => ({score,qual: scoreToCompetencial(score, settings.thresholds)});
+  for (const st of subject.students) {
+    const old=existing?.[st.id];
+    const ca: TermStudentGrades['criteria']={}, ce: TermStudentGrades['competencies']={};
+    for (const cr of criteria) {
+      const manual=old?.criteria?.[cr.id];
+      if (manual?.isManual && valid(manual.score)) { ca[cr.id]={...asGrade(manual.score),isManual:true}; continue; }
+      const entries=activities.filter(a=>a.criteriaIds?.includes(cr.id)).map(a=>({score:getCriterionScore(a,st.id,cr.id,subject),weight:(a.weight ?? 1)*(a.criteriaWeights?.[cr.id] ?? 1)}));
+      const score=weightedStatistic(entries,mode);
+      if (score !== null) ca[cr.id]=asGrade(score);
     }
-    headers.push(`${act.code} (Comentari)`);
+    for (const comp of competencies) {
+      const manual=old?.competencies?.[comp.id];
+      if (manual?.isManual && valid(manual.score)) { ce[comp.id]={...asGrade(manual.score),isManual:true}; continue; }
+      const score=weightedStatistic(criteria.filter(c=>c.competencyId===comp.id && ca[c.id]).map(c=>({score:ca[c.id].score,weight:1})),mode);
+      if (score !== null) ce[comp.id]=asGrade(score);
+    }
+    const failed=Object.values(ce).filter(x=>x.score < settings.thresholds.AS).length;
+    const autoFailed=!!settings.maxFailedCompetencies && failed>=settings.maxFailedCompetencies;
+    const score=weightedStatistic(Object.values(ce).map(x=>({score:x.score,weight:1})),mode);
+    const manual=old?.finalGrade?.isManual && valid(old.finalGrade.score);
+    const finalScore=manual ? old.finalGrade.score : score;
+    result[st.id]={criteria:ca,competencies:ce,finalGrade:{score:finalScore,qual:finalScore === null ? '' : autoFailed ? 'NA' : scoreToCompetencial(finalScore,settings.thresholds),isManual:manual,failedCECount:failed,autoFailed}};
+  }
+  return result;
+}
+
+export function calculateCompetencialTermGrades(subject: Subject, activities: CurricularActivity[], competencies: Competency[], criteria: EvalCriterion[], existing?: Record<string,TermStudentGrades>, mode: CalculationMode = 'mean'): Record<string,TermStudentGrades> {
+  const all=Object.fromEntries((['mean','median','mode'] as const).map(m=>[m,computeCompetencial(subject,activities,competencies,criteria,existing,m)]));
+  const result=all[mode];
+  for (const st of subject.students) result[st.id].metrics={mean:all.mean[st.id].finalGrade.score,median:all.median[st.id].finalGrade.score,mode:all.mode[st.id].finalGrade.score};
+  return result;
+}
+
+function computeNumeric(subject: Subject, activities: CurricularActivity[], existing: Record<string,TermStudentGrades> | undefined, mode: CalculationMode) {
+  const result: Record<string,TermStudentGrades>={}, settings=getCompSettings(subject);
+  for (const st of subject.students) {
+    const old=existing?.[st.id], items: NonNullable<TermStudentGrades['items']>={};
+    for (const item of subject.numericItems || []) {
+      const manual=old?.items?.[item.id];
+      if (manual?.isManual && valid(manual.score)) { items[item.id]={...manual}; continue; }
+      const score=weightedStatistic(activities.filter(a=>a.numericItemId===item.id).map(a=>{const s=getActivityScore(a,st.id,subject);return {score:s === null ? null : s*2.5,weight:a.weight ?? 1};}),mode);
+      if (score !== null) items[item.id]={score};
+    }
+    const score=weightedStatistic((subject.numericItems || []).filter(i=>items[i.id]).map(i=>({score:items[i.id].score,weight:i.weight})),mode);
+    const manual=old?.finalGrade?.isManual && valid(old.finalGrade.score);
+    const final=manual ? old.finalGrade.score : score;
+    result[st.id]={criteria:{},competencies:{},items,finalGrade:{score:final,qual:final === null ? '' : scoreToCompetencial(final/2.5,settings.thresholds),isManual:manual}};
+  }
+  return result;
+}
+
+export function calculateNumericTermGrades(subject: Subject, activities: CurricularActivity[], existing?: Record<string,TermStudentGrades>, mode: CalculationMode = 'mean'): Record<string,TermStudentGrades> {
+  const all=Object.fromEntries((['mean','median','mode'] as const).map(m=>[m,computeNumeric(subject,activities,existing,m)]));
+  const result=all[mode];
+  for (const st of subject.students) result[st.id].metrics={mean:all.mean[st.id].finalGrade.score,median:all.median[st.id].finalGrade.score,mode:all.mode[st.id].finalGrade.score};
+  return result;
+}
+function workbook(title: string, headers: string[], rows: (string|number|null)[][], sheetName: string) {
+  const wb=XLSX.utils.book_new(), ws=XLSX.utils.aoa_to_sheet([[title],[],headers,...rows]);
+  ws['!cols']=headers.map((h,index)=>({wch:index===1?28:Math.min(32,Math.max(14,h.length))}));
+  if(rows.length)ws['!autofilter']={ref:XLSX.utils.encode_range({r:2,c:0},{r:rows.length+2,c:headers.length-1})};
+  XLSX.utils.book_append_sheet(wb,ws,sheetName);
+  return wb;
+}
+const exportNumber=(n:unknown)=>valid(n)?round(n):null;
+const safeName=(s:string)=>s.replace(/[^a-zA-Z0-9À-ÿ_-]/g,'_').slice(0,90);
+
+export function buildTermGradesWorkbook(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>) {
+  const numeric=subject.evaluationType==='numeric';
+  const headers=['ID Alumne','Nom Alumne'];
+  if(numeric)(subject.numericItems||[]).forEach(i=>headers.push(`${i.code} · ${i.name} (${i.weight}%)`));
+  else {
+    criteria.forEach(c=>headers.push(`CA ${c.shortLabel||c.key} /4`,`CA ${c.shortLabel||c.key} · Qual.`));
+    competencies.forEach(c=>headers.push(`CE ${c.key} /4`,`CE ${c.key} · Qual.`));
+    headers.push('CE suspeses','NA pel límit de CE');
+  }
+  headers.push('Mitjana total','Mediana total','Moda total',`Nota final /${numeric?10:4}`,'Qualificació final','Nota final manual');
+  const rows=subject.students.map(st=>{
+    const g=grades[st.id],row:(string|number|null)[]=[st.id,st.name];
+    if(numeric)(subject.numericItems||[]).forEach(i=>row.push(exportNumber(g?.items?.[i.id]?.score)));
+    else {
+      criteria.forEach(c=>row.push(exportNumber(g?.criteria?.[c.id]?.score),g?.criteria?.[c.id]?.qual||''));
+      competencies.forEach(c=>row.push(exportNumber(g?.competencies?.[c.id]?.score),g?.competencies?.[c.id]?.qual||''));
+      row.push(g?.finalGrade.failedCECount??null,g?.finalGrade.autoFailed?'Sí':'');
+    }
+    row.push(exportNumber(g?.metrics?.mean),exportNumber(g?.metrics?.median),exportNumber(g?.metrics?.mode),exportNumber(g?.finalGrade.score),g?.finalGrade.qual||'',g?.finalGrade.isManual?'Sí':'');
+    return row;
   });
-
-  const rows: any[][] = [];
-
-  students.forEach(st => {
-    const row: any[] = [st.id, st.name];
-
-    activities.forEach(act => {
-      const grade = act.grades?.[st.id];
-
-      if (act.criteriaIds && act.criteriaIds.length > 0) {
-        act.criteriaIds.forEach(critId => {
-          const crGrade = grade?.criteriaGrades?.[critId];
-          if (crGrade?.competencialScore) {
-            row.push(crGrade.competencialScore);
-          } else if (crGrade?.rawScore !== undefined) {
-            row.push(crGrade.rawScore);
-          } else if (grade?.score !== undefined) {
-            row.push(grade.score);
-          } else {
-            row.push('-');
-          }
-        });
-      } else {
-        if (grade?.competencialScore) {
-          row.push(grade.competencialScore);
-        } else if (grade?.score !== undefined) {
-          row.push(grade.score);
-        } else {
-          row.push('-');
-        }
-      }
-
-      row.push(grade?.comment || '');
+  return workbook(`${subject.name} · ${periodName}`,headers,rows,'Qualificacions');
+}
+export function exportTermGradesToExcel(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>) {
+  XLSX.writeFile(buildTermGradesWorkbook(subject,periodName,criteria,competencies,grades),`Qualificacions_${safeName(subject.name)}_${safeName(periodName)}.xlsx`);
+}
+export function buildActivitiesWorkbook(subject:Subject,activities:CurricularActivity[],criteria:EvalCriterion[],students:Subject['students']) {
+  const settings=getCompSettings(subject), headers=['ID Alumne','Nom Alumne'];
+  activities.forEach(a=>{
+    (a.criteriaIds||[]).forEach(id=>{
+      const c=criteria.find(c=>c.id===id),label=a.criteriaCustomLabels?.[id]||c?.shortLabel||c?.key||id;
+      headers.push(`${a.code} · ${label} · Puntuació`,`${a.code} · ${label} · Màxim`,`${a.code} · ${label} /4`,`${a.code} · ${label} · Qual.`);
     });
-
-    rows.push(row);
+    headers.push(`${a.code} · Global /${subject.evaluationType==='numeric'?10:4}`,`${a.code} · Qual.`,`${a.code} · Comentari`);
   });
-
-  const wsData = [
-    [`DocentSuite - Tauler d'Activitats: ${subject.name}`],
-    [`Generat el: ${new Date().toLocaleDateString('ca-ES')}`],
-    [],
-    headers,
-    ...rows
-  ];
-
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  XLSX.utils.book_append_sheet(wb, ws, 'Activitats');
-
-  const fileName = `Activitats_${subject.name.replace(/[^a-zA-Z0-9]/g, '_')}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+  const rows=students.map(st=>{
+    const row:(string|number|null)[]=[st.id,st.name];
+    activities.forEach(a=>{
+      (a.criteriaIds||[]).forEach(id=>{
+        const cg=a.grades?.[st.id]?.criteriaGrades?.[id],score=getCriterionScore(a,st.id,id,subject);
+        row.push(valid(cg?.rawScore)?cg.rawScore:cg?.competencialScore||null,valid(cg?.rawScore)?a.criteriaMaxScores?.[id]??cg.maxScore??10:null,exportNumber(score),score===null?'':scoreToCompetencial(score,settings.thresholds));
+      });
+      const score=getActivityScore(a,st.id,subject);
+      row.push(score===null?null:round(score*(subject.evaluationType==='numeric'?2.5:1)),score===null?'':scoreToCompetencial(score,settings.thresholds),a.grades?.[st.id]?.comment||'');
+    });
+    return row;
+  });
+  return workbook(`${subject.name} · Notes de les activitats`,headers,rows,'Activitats');
+}
+export function exportActivitiesToExcel(subject: Subject, activities: CurricularActivity[], criteria: EvalCriterion[], students: Subject['students']) {
+  XLSX.writeFile(buildActivitiesWorkbook(subject,activities,criteria,students),`Activitats_${safeName(subject.name)}.xlsx`);
 }

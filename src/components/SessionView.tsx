@@ -108,7 +108,7 @@ export default function SessionView({
     }
     setOpenInputs({});
     setDraftComments({});
-  }, [existingLog, scheduleItemId, dateStr]);
+  }, [scheduleItemId, dateStr]);
 
   // Handle immediate auto-save triggers whenever inputs change
   const triggerSaveUpdate = (
@@ -310,10 +310,7 @@ export default function SessionView({
   const lastDayActivities = subject ? getLastDayBeforeDeliveryActivities(state, subject.id, dateStr) : [];
 
   // Previous session log lookup
-  const prevLog = (prevItem && subject) ? state.sessionLogs.find(l => 
-    l.id === `${prevItem.id}_${prevItem.date}` || 
-    (l.subjectId === subject.id && l.date === prevItem.date)
-  ) : null;
+  const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => l.id === `${prevItem.id}_${prevItem.date}`) || state.sessionLogs.find(l => l.subjectId === subject.id && l.date === prevItem.date)) : null;
 
   // General notes & links handlers for non-curricular subjects
   const handleAddGeneralNote = () => {
@@ -536,10 +533,10 @@ export default function SessionView({
       </div>
 
       {/* 2. Main Work Area: Compact Attendance Table (Left) + 3 Session Commentary Spaces (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+      <div className="session-workspace">
         
         {/* LEFT COLUMN: Compact Attendance & Conduct Table (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
+        <div className="session-attendance">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             
             {/* Table Header Bar */}
@@ -889,7 +886,7 @@ export default function SessionView({
         </div>
 
         {/* RIGHT COLUMN: 3 Spaces for Session Continuity (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
+        <div className="session-continuity">
           
           {/* ESPAI 1: Comentaris de la sessió anterior */}
           <div className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-xs">
