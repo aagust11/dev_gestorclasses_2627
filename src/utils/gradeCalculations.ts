@@ -1,3 +1,4 @@
+import { sourceCriterionId } from './activityCriteria';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -198,7 +199,7 @@ export function getCriterionScore(act: CurricularActivity, studentId: string, cr
     return null;
   }
   // A partially graded activity must not fill its ungraded criteria with its summary.
-  if (g?.criteriaGrades) return null;
+  if (g?.criteriaGrades || act.criteriaReferences?.[criterionId]) return null;
   if (act.numericGradingType === 'competencial' && g?.competencialScore) return settings.values[g.competencialScore];
   if (valid(g?.score)) return clamp(g.score/10*4);
   return g?.competencialScore ? settings.values[g.competencialScore] : null;
@@ -223,7 +224,7 @@ function computeCompetencial(subject: Subject, activities: CurricularActivity[],
     for (const cr of criteria) {
       const manual=old?.criteria?.[cr.id];
       if (manual?.isManual && valid(manual.score)) { ca[cr.id]={...asGrade(manual.score),isManual:true}; continue; }
-      const entries=activities.filter(a=>a.criteriaIds?.includes(cr.id)).map(a=>({score:getCriterionScore(a,st.id,cr.id,subject),weight:(a.weight ?? 1)*(a.criteriaWeights?.[cr.id] ?? 1)}));
+      const entries=activities.flatMap(a=>(a.criteriaIds || []).filter(id=>sourceCriterionId(a,id)===cr.id).map(id=>({score:getCriterionScore(a,st.id,id,subject),weight:(a.weight ?? 1)*(a.criteriaWeights?.[id] ?? 1)})));
       const score=weightedStatistic(entries,mode);
       if (score !== null) ca[cr.id]=asGrade(score);
     }
@@ -314,7 +315,7 @@ export function buildActivitiesWorkbook(subject:Subject,activities:CurricularAct
   const settings=getCompSettings(subject), headers=['ID Alumne','Nom Alumne'];
   activities.forEach(a=>{
     (a.criteriaIds||[]).forEach(id=>{
-      const c=criteria.find(c=>c.id===id),label=a.criteriaCustomLabels?.[id]||c?.shortLabel||c?.key||id;
+      const c=criteria.find(c=>c.id===sourceCriterionId(a,id)),label=a.criteriaCustomLabels?.[id]||c?.shortLabel||c?.key||id;
       headers.push(`${a.code} · ${label} · Puntuació`,`${a.code} · ${label} · Màxim`,`${a.code} · ${label} /4`,`${a.code} · ${label} · Qual.`);
     });
     headers.push(`${a.code} · Global /${subject.evaluationType==='numeric'?10:4}`,`${a.code} · Qual.`,`${a.code} · Comentari`);

@@ -1,3 +1,6 @@
+import { sourceCriterionId, preserveLegacyCriterionGrades } from '../utils/activityCriteria';
+import { RubricDescriptions } from '../types';
+import { QUAL_ORDER } from '../utils/gradeCalculations';
 import {getActivityScore, getCriterionScore} from '../utils/gradeCalculations';
 import DetailPage from './DetailPage';
 import ActivityGradePage from './ActivityGradePage';
@@ -121,6 +124,9 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const [activityTermId, setActivityTermId] = useState<string>('');
   const [activityWeight, setActivityWeight] = useState<number>(10);
   const [selectedCritIds, setSelectedCritIds] = useState<string[]>([]);
+  const [criterionToAdd, setCriterionToAdd] = useState('');
+  const [criteriaReferences, setCriteriaReferences] = useState<Record<string,string>>({});
+  const [criteriaRubrics, setCriteriaRubrics] = useState<Record<string,RubricDescriptions>>({});
   const [criteriaWeights, setCriteriaWeights] = useState<Record<string, number>>({});
   const [criteriaGradingType, setCriteriaGradingType] = useState<Record<string, 'competencial' | 'numeric'>>({});
   const [criteriaCustomLabels, setCriteriaCustomLabels] = useState<Record<string,string>>({});
@@ -192,12 +198,11 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   };
 
   // Toggle criteria selection
-  const handleToggleCriterion = (critId: string) => {
-    if (selectedCritIds.includes(critId)) {
-      setSelectedCritIds(selectedCritIds.filter(id => id !== critId));
-    } else {
-      setSelectedCritIds([...selectedCritIds, critId]);
-    }
+  const handleAddCriterion = () => {
+    if (!relevantCriteria.some(c => c.id === criterionToAdd)) return;
+    const id = crypto.randomUUID();
+    setSelectedCritIds([...selectedCritIds, id]);
+    setCriteriaReferences({...criteriaReferences, [id]:criterionToAdd});
   };
 
   // Reset form
@@ -220,6 +225,9 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setActivityWeight(10);
     setSelectedCritIds([]);
     setCriteriaWeights({});
+    setCriteriaReferences({});
+    setCriteriaRubrics({});
+    setCriterionToAdd('');
     setCriteriaGradingType({});
     setCriteriaMaxScores({});
     setCriteriaCustomLabels({});
@@ -252,13 +260,15 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       weight: Number(activityWeight) || 0,
       resources: resources,
       criteriaIds: selectedCritIds,
+      criteriaReferences,
+      criteriaRubrics,
       criteriaWeights: criteriaWeights,
       criteriaGradingType: criteriaGradingType,
       criteriaMaxScores: criteriaMaxScores,
       criteriaCustomLabels,
       numericItemId: activityNumericItemId || undefined,
       numericGradingType: activityNumericGradingType,
-      grades: editingId ? (existingActivities.find(a => a.id === editingId)?.grades || {}) : {}
+      grades: preserveLegacyCriterionGrades(existingActivities.find(a => a.id === editingId))
     };
 
     let updatedActs: CurricularActivity[] = [];
@@ -305,6 +315,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             criteriaCustomLabels: nextActivity.criteriaCustomLabels,
             resources: nextActivity.resources,
             criteriaIds: nextActivity.criteriaIds,
+            criteriaReferences: nextActivity.criteriaReferences,
+            criteriaRubrics: nextActivity.criteriaRubrics,
             criteriaWeights: nextActivity.criteriaWeights,
             criteriaGradingType: nextActivity.criteriaGradingType,
             criteriaMaxScores: nextActivity.criteriaMaxScores,
@@ -327,6 +339,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             criteriaCustomLabels: nextActivity.criteriaCustomLabels,
             resources: nextActivity.resources,
             criteriaIds: nextActivity.criteriaIds,
+            criteriaReferences: nextActivity.criteriaReferences,
+            criteriaRubrics: nextActivity.criteriaRubrics,
             criteriaWeights: nextActivity.criteriaWeights,
             criteriaGradingType: nextActivity.criteriaGradingType,
             criteriaMaxScores: nextActivity.criteriaMaxScores,
@@ -384,6 +398,9 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setActivityWeight(act.weight);
     setSelectedCritIds(act.criteriaIds || []);
     setCriteriaWeights(act.criteriaWeights || {});
+    setCriteriaReferences(act.criteriaReferences || {});
+    setCriteriaRubrics(act.criteriaRubrics || {});
+    setCriterionToAdd('');
     setCriteriaGradingType(act.criteriaGradingType || {});
     setCriteriaMaxScores(act.criteriaMaxScores || {});
     setCriteriaCustomLabels(act.criteriaCustomLabels || {});
@@ -468,7 +485,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       // Criteria actively included in subject's activities
       const associatedCritIds = new Set<string>();
       actsForSub.forEach(a => {
-        a.criteriaIds?.forEach(id => associatedCritIds.add(id));
+        a.criteriaIds?.forEach(id => associatedCritIds.add(sourceCriterionId(a,id)));
       });
 
       const coveredCriteriaInActivities = compCriteria.filter(cr => associatedCritIds.has(cr.id));
@@ -776,39 +793,12 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                     </div>
                   )}
 
-                  {/* CRITERIA MULTI-SELECT checklist */}
-                  <div className="space-y-2">
-                    <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Criteris d'Avaluació Vinculables ({relevantCriteria.length})</label>
-                    {relevantCriteria.length === 0 ? (
-                      <p className="text-[10.5px] text-amber-600 bg-amber-50 px-2.5 py-2 border border-amber-100 rounded-lg">Creeu criteris a Configuració de competències d'aquesta assignatura per poder vincular-los.</p>
-                    ) : (
-                      <div className="border border-slate-200 rounded-xl  p-2 bg-slate-50/50 space-y-1">
-                        {relevantCriteria.map((cri) => {
-                          const isChecked = selectedCritIds.includes(cri.id);
-                          return (
-                            <button
-                              key={cri.id}
-                              type="button"
-                              onClick={() => handleToggleCriterion(cri.id)}
-                              className={`w-full p-2 text-left rounded-lg text-xs flex items-start space-x-2 border transition-all cursor-pointer ${
-                                isChecked 
-                                  ? 'bg-blue-50 border-blue-200 text-blue-900 font-bold' 
-                                  : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50/80 font-normal'
-                              }`}
-                            >
-                              <div className="w-4 h-4 rounded border border-slate-350 shrink-0 flex items-center justify-center bg-white mt-0.5">
-                                {isChecked && <Check className="w-3.5 h-3.5 text-blue-600 font-extrabold" />}
-                              </div>
-                              <div className="overflow-hidden leading-normal">
-                                <span className="font-black font-mono text-slate-705 block">{cri.shortLabel || cri.key}</span>
-                                <span className="text-[10px] text-slate-450 block truncate leading-snug mt-0.5">{cri.description}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  <section className="space-y-2">
+                    <label className="ds-field" htmlFor="criterion-to-add">Afegir criteri d’avaluació</label>
+                    <div className="flex gap-2"><select id="criterion-to-add" className="flex-1" value={criterionToAdd} onChange={e=>setCriterionToAdd(e.target.value)}><option value="">Selecciona un criteri…</option>{relevantCriteria.map(cr=><option key={cr.id} value={cr.id}>{cr.shortLabel || cr.key} · {cr.description}</option>)}</select><button type="button" className="ds-button ds-primary" disabled={!criterionToAdd} onClick={handleAddCriterion}>Afegir</button></div>
+                    <p className="text-sm text-slate-500">Pots afegir el mateix criteri diverses vegades per avaluar aspectes diferents. Cada entrada té la seva pròpia nota i pes.</p>
+                    {!relevantCriteria.length && <p className="text-amber-700 text-sm">Crea primer els criteris a Configuració → Competències.</p>}
+                  </section>
 
                   {/* CRITERIA WEIGHTS AND GRADING TYPE CONFIGURATION */}
                   {selectedCritIds.length > 0 && (
@@ -821,7 +811,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                       </p>
                       <div className="space-y-2  pr-1 pt-1">
                         {selectedCritIds.map((cid) => {
-                          const cr = state.criteria.find(c => c.id === cid);
+                          const cr = state.criteria.find(c => c.id === (criteriaReferences[cid] ?? cid));
                           const weight = criteriaWeights[cid] ?? 1;
                           const gType = criteriaGradingType[cid] || 'competencial';
                           const maxSc = criteriaMaxScores[cid] ?? 10;
@@ -838,7 +828,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                               </div>
 
                               <label className="ds-field">Text per identificar aquest criteri quan avalues<input value={criteriaCustomLabels[cid] ?? cr?.shortLabel ?? cr?.key ?? ''} onChange={e => setCriteriaCustomLabels({...criteriaCustomLabels, [cid]:e.target.value})} placeholder="Ex.: P1-CA1 · Expressió oral" /></label>
-                              <div className="flex gap-2"><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
+                              <div className="flex gap-2"><button type="button" className="ds-button text-rose-700" onClick={()=>setSelectedCritIds(selectedCritIds.filter(id=>id!==cid))}>Treure de l’activitat</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
+                              <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-2"><legend className="font-semibold text-sm mb-2">Què significa cada nivell en aquest aspecte?</legend>{QUAL_ORDER.map(q=><label className="ds-field" key={q}><span className={`grade-badge ${QUAL_COLORS[q].badge}`}>{q}</span><textarea rows={2} value={criteriaRubrics[cid]?.[q] ?? cr?.rubric?.[q] ?? ''} placeholder={`Descripció de ${q}…`} onChange={e=>setCriteriaRubrics({...criteriaRubrics,[cid]:{...criteriaRubrics[cid],[q]:e.target.value}})}/></label>)}</fieldset>
                               <div className="grid grid-cols-3 gap-1.5 items-center">
                                 <div>
                                   <label className="text-[8.5px] font-bold text-slate-400 block uppercase">Pes</label>
@@ -1014,7 +1005,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                 <div className="space-y-4">
                   {/* Direct Activities list */}
                   {activitiesForSubject.direct.map((act) => {
-                    const actCriteria = state.criteria.filter(cr => act.criteriaIds?.includes(cr.id));
+                    const actCriteria = state.criteria.filter(cr => act.criteriaIds?.some(id=>sourceCriterionId(act,id)===cr.id));
                     const term = state.config.terms.find(t => t.id === act.termId);
                     const isCurrentlyGrading = selectedActIdForGrading === act.id;
                     const { effectiveStatus, isAuto, totalStudents, gradedStudents } = resolveActivityStatus(act);

@@ -104,7 +104,10 @@ export interface Competency {
   description: string;
 }
 
+export type RubricDescriptions = Partial<Record<'NA' | 'AS' | 'AN' | 'AE', string>>;
+
 export interface EvalCriterion {
+  rubric?: RubricDescriptions;
   id: string;
   competencyId: string;
   key: string;       // e.g., "CEProg1.1"
@@ -177,7 +180,9 @@ export interface CurricularActivity {
   termId: string; // References Term
   weight: number; // Pes global de l'activitat (e.g. 10%)
   resources: ActivityResource[];
-  criteriaIds: string[]; // References EvalCriterion
+  criteriaIds: string[]; // Ordered occurrence IDs; legacy entries are EvalCriterion IDs.
+  criteriaReferences?: Record<string, string>; // occurrence ID -> EvalCriterion ID
+  criteriaRubrics?: Record<string, RubricDescriptions>; // occurrence ID -> level descriptions
   // Configuració per criteri a l'activitat (pesos i tipus de puntuació):
   criteriaWeights?: Record<string, number>; // criterionId -> pes relatiu dins l'activitat (ex: 1, 2...)
   criteriaGradingType?: Record<string, 'competencial' | 'numeric'>; // criterionId -> competencial o numèric

@@ -1,3 +1,4 @@
+import CurriculumEditor, { CurriculumTarget } from './CurriculumEditor';
 import DetailPage from './DetailPage';
 import SubjectGradingSettings, { validateSubjectGrading } from './SubjectGradingSettings';
 import CriteriaLabels from './CriteriaLabels';
@@ -302,6 +303,7 @@ export default function ConfiguracioView({
   const [subBulkStudents, setSubBulkStudents] = useState('');
 
   // Editing subjects variables
+  const [curriculumEdit, setCurriculumEdit] = useState<CurriculumTarget | null>(null);
   const [isCreatingSubject, setIsCreatingSubject] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
@@ -690,6 +692,8 @@ export default function ConfiguracioView({
     if (initialSubjectId === 'new') setIsCreatingSubject(true);
     else { const selected = state.subjects.find(s => s.id === initialSubjectId); if (selected) startEditingSubject(selected); }
   }, [initialSubjectId]);
+
+  if (curriculumEdit) return <CurriculumEditor key={curriculumEdit.id} state={state} target={curriculumEdit} onChange={onChangeState} onBack={()=>setCurriculumEdit(null)} />;
 
   if (reimportSubId) return <DetailPage title="Gestionar alumnat" subtitle={state.subjects.find(s=>s.id===reimportSubId)?.name} onBack={()=>setReimportSubId(null)}><div className="bg-indigo-950/[0.02] border border-slate-200 rounded-2xl p-6 bg-white space-y-5">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -1671,7 +1675,7 @@ export default function ConfiguracioView({
               </select>
             </div>
 
-            {selectedSubjectForComp && <CriteriaLabels state={state} subjectId={effectiveCompSubId} onChange={onChangeState} />}
+            {selectedSubjectForComp && <CriteriaLabels state={state} subjectId={effectiveCompSubId} onChange={onChangeState} onEdit={setCurriculumEdit} />}
             {selectedSubjectForComp && (
               <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b pb-4 mb-2 gap-2">

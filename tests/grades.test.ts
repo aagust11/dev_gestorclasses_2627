@@ -123,3 +123,49 @@ test('La recàrrega conserva les notes manuals, els llindars i la configuració 
 test('L’avís de lliurament no apareix en una classe anterior a l’inici de l’activitat',()=>{
   const state=getInitialState();state.subjects=[sub()];state.config.startDate='2026-09-01';state.config.endDate='2026-09-30';state.config.holidays=[];state.schedule=[{id:'slot',subjectId:'s',dayOfWeek:1,timeSlotId:state.config.timeSlots[0].id}];state.activities=[act({startDate:'2026-09-08',endDate:'2026-09-10'})];assert.deepEqual(getLastDayBeforeDeliveryActivities(state,'s','2026-09-07'),[]);
 });
+
+test('Un CA repetit té notes, pesos i màxims independents i s’agrega al CA original',()=>{
+  const s=sub(), a=act({criteriaIds:['first','second'],criteriaReferences:{first:'ca1',second:'ca1'},criteriaWeights:{first:1,second:3},criteriaMaxScores:{first:20,second:10},criteriaCustomLabels:{first:'Expressió oral',second:'Expressió escrita'},grades:{u:{criteriaGrades:{first:{rawScore:10},second:{competencialScore:'AE'}}}}});
+  assert.equal(getCriterionScore(a,'u','first',s),2);
+  assert.equal(getCriterionScore(a,'u','second',s),4);
+  assert.equal(getActivityScore(a,'u',s),3.5);
+  assert.equal(calc(s,[a]).criteria.ca1.score,3.5);
+  assert.equal(calc(s,[a]).competencies.ce1.score,3.5);
+  const rows=XLSX.utils.sheet_to_json<any[]>(buildActivitiesWorkbook(s,[a],criteria,s.students).Sheets.Activitats,{header:1});
+  assert.ok(rows[2].includes('P1 · Expressió oral · Puntuació'));
+  assert.ok(rows[2].includes('P1 · Expressió escrita · Puntuació'));
+  assert.equal(rows[3][2],10);assert.equal(rows[3][6],'AE');
+  a.criteriaIds.reverse();assert.equal(calc(s,[a]).criteria.ca1.score,3.5);
+  a.criteriaIds=['first'];assert.equal(calc(s,[a]).criteria.ca1.score,2);
+});
+
+test('Les repeticions pendents no hereten una nota antiga ni la d’una altra repetició',()=>{
+  const a=act({criteriaIds:['ca1','new'],criteriaReferences:{new:'ca1'},grades:{u:{score:8}}});
+  assert.equal(getCriterionScore(a,'u','ca1',sub()),3.2);
+  assert.equal(getCriterionScore(a,'u','new',sub()),null);
+  assert.equal(calc(sub(),[a]).criteria.ca1.score,3.2);
+});
+
+test('Les descripcions per aspecte sobreescriuen només els nivells personalitzats',async()=>{
+  const {criterionRubric,sourceCriterionId}=await import('../src/utils/activityCriteria');
+  const a=act({criteriaIds:['one','two'],criteriaReferences:{one:'ca1',two:'ca1'},criteriaRubrics:{one:{AS:'Descriu el procediment'},two:{AS:'Justifica el resultat'}}});
+  const cr={...criteria[0],rubric:{NA:'No ho resol',AS:'Ho resol',AE:'Ho explica amb precisió'}};
+  assert.equal(criterionRubric(a,'one',cr).AS,'Descriu el procediment');
+  assert.equal(criterionRubric(a,'two',cr).AS,'Justifica el resultat');
+  assert.equal(criterionRubric(a,'one',cr).AE,'Ho explica amb precisió');
+  assert.equal(sourceCriterionId(a,'one'),cr.id);
+  cr.key='CA-renovat';cr.description='Descripció nova';
+  assert.equal(calc(sub(),[{...a,grades:{u:{criteriaGrades:{one:{rawScore:8}}}}}],[cr]).criteria.ca1.score,3.2);
+});
+
+test('Editar una activitat antiga preserva les notes globals dels criteris originals',async()=>{
+  const {preserveLegacyCriterionGrades}=await import('../src/utils/activityCriteria');
+  const original=act({criteriaMaxScores:{ca1:20},grades:{u:{score:8,comment:'Conservar'}}});
+  const updated={...original,criteriaIds:['ca1','extra'],criteriaReferences:{extra:'ca1'},grades:preserveLegacyCriterionGrades(original)};
+  assert.equal(getCriterionScore(updated,'u','ca1',sub()),3.2);
+  assert.equal(getCriterionScore(updated,'u','extra',sub()),null);
+  updated.grades.u.criteriaGrades.extra={rawScore:10};
+  assert.equal(getCriterionScore(updated,'u','ca1',sub()),3.2);
+  assert.equal(updated.grades.u.comment,'Conservar');
+  assert.equal(original.grades.u.criteriaGrades,undefined);
+});

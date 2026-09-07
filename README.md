@@ -63,3 +63,11 @@ npm run build
 ```
 
 Les proves cobreixen ponderacions, zeros i pendents, llindars, modes estadístics, correccions manuals, filtres de període, persistència i estructura dels Excel. El desplegament executa aquestes comprovacions abans de publicar.
+
+### Criteris repetits i rúbriques
+
+A l'editor d'activitats, selecciona un criteri i prem **Afegir**. El pots afegir diverses vegades: cada entrada conserva una nota, un pes, un format i un text propis. Els càlculs del trimestre/curs agrupen aquestes entrades dins del CA original, amb els pesos corresponents. Les exportacions mostren una columna per cada entrada.
+
+Cada entrada permet descriure els nivells **NA, AS, AN i AE**. En avaluar, passa el cursor per cada botó per veure'n la descripció; també es mostra sobre l'equivalent qualitatiu d'una puntuació numèrica.
+
+A **Configuració → Competències → Editar competències i criteris** es poden editar els codis i les descripcions sense canviar els identificadors interns ni perdre les notes. Els criteris també poden tenir descripcions de nivell comunes, que les activitats utilitzen mentre no les personalitzis.
