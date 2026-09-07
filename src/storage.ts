@@ -1,3 +1,4 @@
+import {assertValidImport,inspectImport,parseImportJson,readImportFile,ImportReport} from './utils/importValidation';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -56,18 +57,9 @@ export async function verifyPermission(fileHandle: any, readWrite = true): Promi
 }
 
 // Load from File System File Handle
-export async function loadFromFileHandle(fileHandle: any): Promise<AppState | null> {
-  try {
-    const file = await fileHandle.getFile();
-    const contents = await file.text();
-    const state = JSON.parse(contents);
-    if (validateState(state)) {
-      return normalizeState(state);
-    }
-  } catch (e) {
-    console.error('Error llegint el fitxer JSON enllaçat:', e);
-  }
-  return null;
+export async function loadFromFileHandle(fileHandle:any):Promise<AppState> {
+  const file=await fileHandle.getFile();
+  return normalizeState(await readImportFile(file));
 }
 
 // Serialize snapshots at enqueue time. A rejected write must not poison the queue.
@@ -84,7 +76,11 @@ export function saveToFileHandle(fileHandle:any,state:AppState):Promise<boolean>
 }
 const RECOVERY_KEY=LOCAL_STORAGE_KEY+'_recovery';
 export type RecoveryCopy={id:string;date:string;reason:string;raw:string};
-export function recoveryCopies():RecoveryCopy[]{return JSON.parse(localStorage.getItem(RECOVERY_KEY)||'[]');}
+export function recoveryCopies():RecoveryCopy[]{
+  const copies=JSON.parse(localStorage.getItem(RECOVERY_KEY)||'[]');
+  if(!Array.isArray(copies)||copies.some(c=>!c||typeof c.id!=='string'||typeof c.date!=='string'||typeof c.reason!=='string'||typeof c.raw!=='string'))throw Error('El registre de còpies recuperables està malmès; no s’ha modificat. Descarrega les dades actuals abans de continuar.');
+  return copies;
+}
 export function createRecoveryCopy(state:AppState,reason:string){
   const copy={id:crypto.randomUUID(),date:new Date().toISOString(),reason,raw:JSON.stringify(state)};
   localStorage.setItem(RECOVERY_KEY,JSON.stringify([copy,...recoveryCopies()].slice(0,3)));
@@ -93,25 +89,24 @@ export function createRecoveryCopy(state:AppState,reason:string){
 export function readStoredRaw(){return localStorage.getItem(LOCAL_STORAGE_KEY);}
 
 // Validate that an object conforms to AppState
-export function validateState(obj: any): boolean {
-  if (!obj || typeof obj !== 'object') return false;
-  if (!obj.config || !Array.isArray(obj.subjects) || !Array.isArray(obj.schedule)) return false;
-  if(!obj.subjects.every((s:any)=>s&&typeof s.id==='string'&&Array.isArray(s.students)&&s.students.every((st:any)=>st&&typeof st.id==='string'&&typeof st.name==='string')))return false;
-  for(const key of ['sessionLogs','activities','criteria','competencies','plans','termGradesRecords'])if(obj[key]!==undefined&&!Array.isArray(obj[key]))return false;
-  return true;
-}
+export function validateState(obj:unknown):boolean {return inspectImport(obj).valid;}
 
 // Load general state (handles local storage and file handle lookup)
-export function loadStateFromLocalStorage():AppState {
+export function loadStateFromLocalStorage(onReport?:(report:ImportReport)=>void):AppState {
   const raw=localStorage.getItem(LOCAL_STORAGE_KEY);
   if(!raw)return getInitialState();
-  const state=JSON.parse(raw);
-  if(!validateState(state))throw Error('Les dades del navegador no tenen un format vàlid. Recupera una còpia o importa un fitxer.');
-  return normalizeState(state);
+  const prepared=prepareImportedState(parseImportJson(raw));
+  onReport?.(prepared.report);
+  return prepared.state;
 }
 
 // Merge state with potential missing root fields
-export function normalizeState(loadedState: any): AppState {
+export function normalizeState(loadedState:unknown):AppState {return prepareImportedState(loadedState).state;}
+export function prepareImportedState(loadedState:any):{state:AppState;report:ImportReport}{
+  const report=assertValidImport(loadedState);
+  return {state:completeLegacyState(loadedState),report};
+}
+function completeLegacyState(loadedState: any): AppState {
   const d = getInitialState();
   return {
     ...loadedState,
@@ -125,14 +120,14 @@ export function normalizeState(loadedState: any): AppState {
       timeSlots: loadedState.config?.timeSlots || d.config.timeSlots,
       substitutions: loadedState.config?.substitutions || d.config.substitutions || [],
     },
-    subjects: loadedState.subjects || d.subjects,
+    subjects: loadedState.subjects.map((s:any)=>({color:'#3b82f6',isGeneral:false,parentId:null,...s})),
     schedule: loadedState.schedule || d.schedule,
-    competencies: loadedState.competencies || d.competencies,
-    criteria: loadedState.criteria || d.criteria,
-    sessionLogs: loadedState.sessionLogs || d.sessionLogs,
-    plans: loadedState.plans || d.plans,
-    activities: loadedState.activities || d.activities || [],
-    termGradesRecords: loadedState.termGradesRecords || [],
+    competencies: (loadedState.competencies || []).map((c:any)=>({description:'',...c})),
+    criteria: (loadedState.criteria || []).map((c:any)=>({description:'',...c})),
+    sessionLogs: (loadedState.sessionLogs || []).map((l:any)=>({comments:'',...l,attendance:Object.fromEntries(Object.entries(l.attendance||{}).map(([id,log]:any)=>[id,{status:'pending',...log}]))})),
+    plans: (loadedState.plans || []).map((p:any)=>({name:p.id,seats:{},teacherDesk:null,...p})),
+    activities: (loadedState.activities || []).map((a:any)=>({code:a.id,description:'',startDate:'',endDate:'',termId:'',status:'auto',weight:1,resources:[],criteriaIds:[],...a})),
+    termGradesRecords: (loadedState.termGradesRecords || []).map((r:any)=>({...r,students:Object.fromEntries(Object.entries(r.students||{}).map(([id,g]:any)=>[id,{criteria:{},competencies:{},...g}]))})),
   };
 }
 
@@ -143,8 +138,10 @@ export function saveStateToLocalStorage(state:AppState):void {
 
 // Download JSON helper
 export function triggerJsonDownload(state: AppState, filename = 'classes_backup.json'): void {
-  const stringified = JSON.stringify(state, null, 2);
-  const blob = new Blob([stringified], { type: 'application/json' });
+  triggerRawJsonDownload(JSON.stringify(state,null,2),filename);
+}
+export function triggerRawJsonDownload(raw:string,filename:string):void {
+  const blob = new Blob([raw], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

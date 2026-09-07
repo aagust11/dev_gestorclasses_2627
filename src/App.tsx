@@ -1,3 +1,5 @@
+import {ImportIssue,ImportValidationError,parseImportJson,readImportFile} from './utils/importValidation';
+import {prepareImportedState,triggerRawJsonDownload} from './storage';
 import {syncStudentRegistry,identityConflicts} from './utils/studentIdentity';
 import {IdentityReview} from './components/IdentityReview';
 import {createRecoveryCopy,recoveryCopies,readStoredRaw,waitForFileWrites} from './storage';
@@ -28,10 +30,7 @@ import {
   setFileHandle,
   removeFileHandle,
   verifyPermission,
-  loadFromFileHandle,
   saveToFileHandle,
-  validateState,
-  normalizeState
 } from './storage';
 
 // Import Views
@@ -69,6 +68,14 @@ export default function App() {
   const revision=useRef(0);
   const [saveStatus,setSaveStatus]=useState<'saved'|'saving'|'error'>('saved');
   const [saveError,setSaveError]=useState('');
+  const [importIssues,setImportIssues]=useState<ImportIssue[]>([]);
+  const [importError,setImportError]=useState('');
+  const importFailed=(e:any)=>{setImportError(e.message||String(e));setImportIssues(e instanceof ImportValidationError?e.report.issues:[]);};
+  const approveImport=(value:unknown)=>{
+    const prepared=prepareImportedState(value);setImportIssues(prepared.report.issues);setImportError('');
+    if(prepared.report.issues.length&&!confirm('El fitxer té avisos que cal revisar.\n'+prepared.report.issues.slice(0,8).map(i=>i.path+': '+i.message).join('\n')+'\n\nVols continuar conservant aquestes dades?'))return null;
+    return prepared.state;
+  };
   const [blocked,setBlocked]=useState(false);
   const [busy,setBusy]=useState(false);
   const [showRecovery,setShowRecovery]=useState(false);
@@ -87,10 +94,10 @@ export default function App() {
   };
   useEffect(()=>{
     try{
-      const loaded=loadStateFromLocalStorage();
+      const loaded=loadStateFromLocalStorage(report=>setImportIssues(report.issues));
       if(!loaded.identityVersion){createRecoveryCopy(loaded,'Abans de migrar les identitats');}
       const normalized=syncStudentRegistry(loaded);install(normalized);if(!identityConflicts(normalized).length)void persist(normalized,null);
-    }catch(e){setBlocked(true);fail(e);}
+    }catch(e){setBlocked(true);importFailed(e);}
     // Finding a handle must never replace newer browser data or edits made during startup.
     getFileHandle().then(h=>{if(h)setAvailableHandle(h);}).catch(e=>setSaveError('No s’ha pogut recuperar l’enllaç al fitxer: '+e.message));
   },[]);
@@ -106,9 +113,10 @@ export default function App() {
       const normalized=syncStudentRegistry(next);install(normalized);void persist(normalized);
     }catch(e){fail(e);}
   };
-  const replaceState=async(next:AppState,reason:string,target=handleRef.current)=>{
+  const replaceState=async(value:unknown,reason:string,target=handleRef.current)=>{
     setBusy(true);
     try{
+      let next:AppState;try{next=approveImport(value);}catch(e){importFailed(e);return;}if(!next)return;
       await waitForFileWrites();
       if(!blocked)snapshot(reason);
       else {const raw=readStoredRaw();if(raw)localStorage.setItem('gestor_classes_unreadable_recovery',raw);}
@@ -122,8 +130,7 @@ export default function App() {
     try{
       await waitForFileWrites();
       if(!await verifyPermission(handle,true))throw Error('No hi ha permís per escriure al fitxer.');
-      const loaded=await loadFromFileHandle(handle);
-      if(!loaded)throw Error('El fitxer no és vàlid. No s’ha modificat ni enllaçat.');
+      let loaded:AppState;try{loaded=approveImport(await readImportFile(await handle.getFile()));}catch(e){importFailed(e);return;}if(!loaded)return;
       if(!confirm(keepCurrent?'Vols enllaçar aquest fitxer i desar-hi les dades actuals? Es conservarà una còpia del contingut anterior del fitxer.':'Vols carregar les dades d’aquest fitxer i activar-hi el desat? La còpia actual del navegador es conservarà abans de substituir-la.'))return;
       if(!blocked)snapshot('Abans de carregar el fitxer enllaçat');
       else {const raw=readStoredRaw();if(raw)localStorage.setItem('gestor_classes_unreadable_recovery',raw);}
@@ -143,7 +150,7 @@ export default function App() {
   const handleFallbackImportJson=async(e:React.ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];e.target.value='';if(!file)return;
     setBusy(true);
-    try{const parsed=JSON.parse(await file.text());if(!validateState(parsed))throw Error('Estructura JSON invàlida; no s’han substituït dades.');await replaceState(normalizeState(parsed),'Abans d’importar JSON');}catch(e){fail(e);}finally{setBusy(false);}
+    try{const parsed=await readImportFile(file);await replaceState(parsed,'Abans d’importar JSON');}catch(e){importFailed(e);}finally{setBusy(false);}
   };
   const handleExportBackup=()=>triggerJsonDownload(current.current,'docentsuite_dades_curs.json');
   const handleResetCourseState=()=>{
@@ -202,9 +209,10 @@ export default function App() {
 
         <div className="px-8 py-2 border-b bg-white text-sm space-y-2">
           <div className="flex flex-wrap items-center gap-3"><span role="status" aria-live="polite" className={saveStatus==='error'?'text-rose-700 font-bold':saveStatus==='saving'?'text-amber-700':'text-emerald-700'}>{saveStatus==='saving'?'Desant…':saveStatus==='error'?'Error de desat':'Desat'} · {linkedFileName?`Navegador i ${linkedFileName}`:'Navegador'}</span><button className="ds-button" disabled={busy||blocked} onClick={()=>void persist(current.current)}>Tornar a desar</button><button className="ds-button" disabled={blocked} onClick={handleExportBackup}>Descarregar JSON actual</button><button className="ds-button" onClick={openRecovery}>Recuperació</button></div>
+          {(importError||importIssues.length>0)&&<section className="ds-panel text-sm" aria-label="Validació de dades"><h2 className="font-bold">{importError?'Importació rebutjada · dades actuals conservades':'Avisos de les dades importades'}</h2>{importError&&!importIssues.length&&<p role="alert">{importError}</p>}<ul className="max-h-60 overflow-auto list-disc pl-5">{importIssues.map((i,n)=><li key={n} className={i.severity==='error'?'text-rose-700':'text-amber-800'}><b>{i.severity==='error'?'Error':'Avís'} · {i.path}</b>: {i.message}</li>)}</ul><p className="text-xs">Les posicions de les llistes comencen a 1. Es mostren fins a 100 incidències.</p><button className="ds-button" onClick={()=>{setImportError('');setImportIssues([]);}}>Tancar avisos</button></section>}
           {saveError&&<p role="alert" className="text-rose-700">{saveError}. Conserva aquesta pestanya oberta i descarrega una còpia si el problema persisteix.</p>}
           {availableHandle&&<div>Hi ha un fitxer anterior: {availableHandle.name}. S’ha mantingut la còpia del navegador. <button className="ds-button" disabled={busy} onClick={()=>void connect(availableHandle)}>Carregar i tornar a enllaçar</button><button className="ds-button" disabled={busy||blocked} onClick={()=>void connect(availableHandle,true)}>Enllaçar conservant les dades actuals</button><button className="ds-button" onClick={()=>setAvailableHandle(null)}>Continuar al navegador</button></div>}
-          {showRecovery&&<section className="ds-panel space-y-2"><h2 className="font-bold">Còpies recuperables · darreres 3 substitucions</h2><p>Es desen en aquest navegador. Exporta també còpies JSON fora del navegador.</p>{copies.map(c=><div key={c.id} className="flex gap-3 items-center"><span>{new Date(c.date).toLocaleString('ca')} · {c.reason}</span><button className="ds-button" onClick={()=>triggerJsonDownload(JSON.parse(c.raw),`recuperacio_${c.id}.json`)}>Descarregar</button><button className="ds-button" disabled={busy} onClick={()=>{if(confirm('Vols restaurar aquesta còpia? Es conservarà la versió actual.')){void replaceState(normalizeState(JSON.parse(c.raw)),'Abans de restaurar una còpia');setShowRecovery(false);}}}>Restaurar</button></div>)}<button className="ds-button" onClick={()=>fileInputRef.current?.click()}>Importar JSON</button>{blocked&&<button className="ds-button" onClick={()=>{const raw=readStoredRaw();if(raw){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='dades_originals_sense_modificar.json';a.click();URL.revokeObjectURL(url);}}}>Descarregar dades originals</button>}</section>}
+{showRecovery&&<section className="ds-panel space-y-2"><h2 className="font-bold">Còpies recuperables · darreres 3 substitucions</h2><p>Es desen en aquest navegador. Exporta també còpies JSON fora del navegador.</p>{copies.map(c=><div key={c.id} className="flex gap-3 items-center"><span>{new Date(c.date).toLocaleString('ca')} · {c.reason}</span><button className="ds-button" onClick={()=>triggerRawJsonDownload(c.raw,`recuperacio_${c.id}.json`)}>Descarregar</button><button className="ds-button" disabled={busy} onClick={()=>{if(confirm('Vols restaurar aquesta còpia? Es conservarà la versió actual.')){try{void replaceState(parseImportJson(c.raw),'Abans de restaurar una còpia');setShowRecovery(false);}catch(e){importFailed(e);}}}}>Restaurar</button></div>)}<button className="ds-button" onClick={()=>fileInputRef.current?.click()}>Importar JSON</button>{blocked&&<button className="ds-button" onClick={()=>{const raw=readStoredRaw();if(raw){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='dades_originals_sense_modificar.json';a.click();URL.revokeObjectURL(url);}}}>Descarregar dades originals</button>}</section>}
         </div>
         {/* Core Router Body */}
         <main id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
