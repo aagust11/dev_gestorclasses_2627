@@ -239,14 +239,14 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import StudentsView from '../src/components/StudentsView';
 
-test('La fitxa respecta períodes, notes manuals i notes esborrades del quadern',()=>{
+test('La fitxa respecta períodes i notes manuals i recalcula les notes esborrades',()=>{
   const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-01'}];
   assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,3.2);
   const manual=calc(s,state.activities);manual.finalGrade={score:2.5,qual:'AS',isManual:true};
   state.termGradesRecords=[{id:'s_t1_mean',subjectId:'s',periodId:'t1',students:{u:manual}}];
   assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,2.5);
   assert.equal(studentPeriodGrade(state,s,'u','t1','median').finalGrade.score,3.2);
-  state.termGradesRecords[0].cleared=true;assert.equal(studentPeriodGrade(state,s,'u','t1','mean'),undefined);
+  state.termGradesRecords[0].cleared=true;assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,3.2);
 });
 
 test('El seguiment individual limita alumne, assignatura i dates sense inventar assistència',()=>{
@@ -263,4 +263,25 @@ test('El PSI es conserva en recarregar però no es renderitza quan la fitxa est�
   saveStateToLocalStorage(state);const loaded=loadStateFromLocalStorage();assert.deepEqual(loaded.studentProfiles,state.studentProfiles);
   const html=renderToStaticMarkup(createElement(StudentsView,{state:loaded,onChange:()=>{},selectedId:'u',onSelect:()=>{},onSession:()=>{}}));
   assert.ok(html.includes('Informació visible'));assert.ok(html.includes('Mostrar PSI'));assert.ok(!html.includes('CONTINGUT_PSI_RESERVAT'));assert.ok(!html.includes('Contingut del PSI · desat automàtic'));
+});
+
+
+import {annualProposals,buildStudentReport,reportSections} from '../src/utils/studentReport';
+import {buildStudentPdf,buildStudentWord} from '../src/utils/studentReportExport';
+test('La nota manual i la calculada conviuen i les propostes anuals tenen fonts independents',()=>{
+ const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;
+ state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-01'},{id:'t2',name:'T2',startDate:'2027-01-01',endDate:'2027-03-01'},{id:'t3',name:'T3',startDate:'2027-04-01',endDate:'2027-06-30'}];
+ state.activities=[act({grades:numericGrade(10)})];
+ const g=calc(s,state.activities);g.finalGrade={score:2,qual:'AS',isManual:true};state.termGradesRecords=[{id:'s_t1_mean',subjectId:'s',periodId:'t1',students:{u:g}}];
+ const proposals=annualProposals(state,s,'u','mean');assert.equal(proposals.termScore,2);assert.equal(proposals.count,1);assert.equal(proposals.total,3);assert.equal(proposals.fromActivities.score,4);assert.equal(proposals.terms[0].automatic.score,4);
+ const report=buildStudentReport(state,'u');assert.equal(report.evaluations[0].actual.mean.finalGrade.score,2);assert.equal(report.evaluations[0].automatic.mean.finalGrade.score,4);assert.equal(report.evaluations[0].actual.mean.competencies.ce1.score,4);
+ assert.ok(JSON.stringify(reportSections(report)).includes('manual; calculada: 4.00 AE'));
+});
+
+test('Els informes Word i PDF es generen i el PSI requereix inclusió explícita',async()=>{
+ const state=getInitialState();state.subjects=[sub()];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.studentProfiles={u:{psi:'PSI_RESERVAT',notes:'Observació: progrés i expressió.'}};
+ const report=buildStudentReport(state,'u');assert.equal(report.psi,undefined);assert.equal(buildStudentReport(state,'u',true).psi,'PSI_RESERVAT');
+ const word=await buildStudentWord(report),pdf=await buildStudentPdf(report);
+ assert.equal(new TextDecoder().decode((await word.arrayBuffer()).slice(0,2)),'PK');assert.equal(new TextDecoder().decode((await pdf.arrayBuffer()).slice(0,5)),'%PDF-');
+ assert.ok(word.size>1000);assert.ok(pdf.size>1000);
 });
