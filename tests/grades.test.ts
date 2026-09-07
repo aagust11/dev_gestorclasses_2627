@@ -305,3 +305,14 @@ test('Les mesures i els comentaris addicionals persisteixen i entren als informe
  saveStateToLocalStorage(state);assert.deepEqual(loadStateFromLocalStorage().studentProfiles,state.studentProfiles);
  state.studentProfiles.u.supportMeasures='  ';assert.equal(buildStudentReport(state,'u').supportMeasures,'');
 });
+
+test('Les mesures estan ocultes a la fitxa, disponibles al hover de psi i els comentaris són generals',()=>{
+ const state=getInitialState();state.subjects=[sub()];state.studentProfiles={u:{psi:'SECRET_PSI',supportMeasures:'MESURES_RESERVADES',additionalComments:'COMENTARI_GENERAL'}};
+ const html=renderToStaticMarkup(createElement(StudentsView,{state,onChange:()=>{},selectedId:'u',onSelect:()=>{},onSession:()=>{}}));
+ assert.ok(html.includes('Mostrar PSI i mesures'));
+ assert.ok(!html.includes('SECRET_PSI'));
+ assert.ok(!/<textarea[^>]*>MESURES_RESERVADES/.test(html));
+ assert.ok(html.indexOf('COMENTARI_GENERAL')<html.indexOf('PSI i mesures de suport'));
+ const marker=renderToStaticMarkup(createElement(StudentName,{state,student:sub().students[0]}));
+ assert.ok(marker.includes('title="MESURES_RESERVADES"'));assert.ok(marker.includes('aria-expanded="false"'));assert.ok(!marker.includes('<dialog'));
+});
