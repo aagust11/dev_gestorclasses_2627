@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-export type AttendanceType = 'present' | 'late10' | 'lateMore10' | 'absent';
+export type AttendanceType = 'present' | 'late10' | 'lateMore10' | 'absent' | 'pending';
 
 export interface StudentLog {
   status: AttendanceType;

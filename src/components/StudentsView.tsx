@@ -1,3 +1,4 @@
+import {studentAttendance,attendanceLabels} from '../utils/attendance';
 import StudentName from './StudentName';
 import React, {useState, useMemo} from 'react';
 import {Eye, EyeOff, Search} from 'lucide-react';
@@ -11,7 +12,7 @@ import {studentPeriodGrade,studentSessionHistory,sessionComments} from '../utils
 
 const methods:CalculationMode[]=['mean','median','mode'];
 const methodNames={mean:'Mitjana',median:'Mediana',mode:'Moda'};
-const attendanceNames={present:'Present',late10:'Retard ≤10 min',lateMore10:'Retard >10 min',absent:'Falta'};
+const attendanceNames=attendanceLabels;
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
 
 export default function StudentsView({state,onChange,selectedId,onSelect,onSession}:{state:AppState;onChange:(s:AppState)=>void;selectedId:string|null;onSelect:(id:string|null)=>void;onSession:(slot:string,date:string)=>void}) {
@@ -37,7 +38,8 @@ function StudentPage({state,student,onChange,onBack,onSession}:{state:AppState;s
   const profile=state.studentProfiles?.[student.id]||{};
   const saveProfile=(patch:Partial<typeof profile>)=>onChange({...state,studentProfiles:{...state.studentProfiles,[student.id]:{...profile,...patch}}});
   const history=studentSessionHistory(state,student.id,period,subjectId);
-  const totals={absent:history.filter(l=>l.studentLog.status==='absent').length,late:history.filter(l=>['late10','lateMore10'].includes(l.studentLog.status)).length,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)};
+  const attendance=studentAttendance(state,student.id,period,subjectId);
+  const totals={absent:attendance.absent,late:attendance.late,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)};
   return <DetailPage title={<StudentName state={state} student={student}/>} subtitle={subjects.map(s=>s.name).join(' · ')} onBack={onBack} actions={<><button className="ds-button" disabled={exporting} onClick={()=>exportReport('word')}>Informe Word</button><button className="ds-button" disabled={exporting} onClick={()=>exportReport('pdf')}>Informe PDF</button></>}>
     <div className="space-y-4">
       {exportError&&<p role="alert" className="text-rose-700">{exportError}</p>}
@@ -47,7 +49,7 @@ function StudentPage({state,student,onChange,onBack,onSession}:{state:AppState;s
       <section className="ds-panel space-y-3"><h3 className="font-bold">Avaluació de les competències · escala 0–4</h3><p className="text-sm text-slate-500">Calculades automàticament a partir de les activitats. Sota una nota manual es mostra el càlcul sense modificacions manuals.</p>{report.evaluations.filter(e=>e.competencies.length).map(e=><div key={e.subject.id+e.period.id}><h4 className="font-semibold text-blue-900 mb-2">{e.subject.name} · {e.period.name}</h4><div className="grade-table-wrap"><table className="grade-table"><thead><tr><th>Competència</th>{methods.map(m=><th key={m}>{methodNames[m]}</th>)}</tr></thead><tbody>{e.competencies.map(c=><tr key={c.id}><td><b>{c.key}</b><span className="block text-xs text-slate-500">{c.description}</span></td>{methods.map(m=><td key={m}><GradeComparison grade={e.actual[m]?.competencies[c.id]} automatic={e.automatic[m]?.competencies[c.id]}/></td>)}</tr>)}</tbody></table></div></div>)}</section>
       <section className="ds-panel space-y-3"><div className="flex flex-wrap items-end justify-between gap-3"><h3 className="font-bold">Assistència i seguiment de les sessions</h3><div className="flex flex-wrap gap-2"><label className="ds-field">Període<select value={period} onChange={e=>setPeriod(e.target.value)}>{periods.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label><label className="ds-field">Assignatura<select value={subjectId} onChange={e=>setSubjectId(e.target.value)}><option value="all">Totes</option>{subjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label></div></div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">{[[totals.absent,'Faltes','bg-rose-50 text-rose-800'],[totals.late,'Retards','bg-amber-50 text-amber-800'],[totals.pos,'Comentaris positius','bg-emerald-50 text-emerald-800'],[totals.incident,'Incidències','bg-orange-50 text-orange-800']].map(([n,label,color])=><div key={label} className={`rounded-lg p-3 ${color}`}><b className="text-xl mr-2">{n}</b><span className="text-sm">{label}</span></div>)}</div>
-        <p className="text-xs text-slate-500">{history.length} sessions amb registre individual. Les faltes i els retards es compten per sessió.</p>
+        <p className="text-xs text-slate-500">{attendance.recorded} assistències registrades · {attendance.pending} pendents · Assistència: {attendance.rate===null?'—':`${attendance.rate}%`}. Còmput fins avui; les pendents no entren al percentatge.</p>
         <div className="grade-table-wrap"><table className="grade-table"><thead><tr><th>Data</th><th>Assignatura</th><th>Assistència</th><th>Positius</th><th>Comentaris</th><th>Incidències</th></tr></thead><tbody>{history.map(log=><tr key={log.id}><td><button className="text-blue-700 underline whitespace-nowrap" onClick={()=>onSession(log.scheduleItemId,log.date)}>{log.date.split('-').reverse().join('/')}</button></td><td>{subjects.find(s=>s.id===log.subjectId)?.name}</td><td className={log.studentLog.status==='absent'?'text-rose-700 font-semibold':''}>{attendanceNames[log.studentLog.status]||'—'}</td>{(['pos','regular','incident'] as const).map(kind=><td key={kind} className="whitespace-pre-wrap text-sm">{sessionComments(log.studentLog,kind).map((comment,i)=><p key={i} className="mb-1">{comment}</p>)}</td>)}</tr>)}</tbody></table>{!history.length&&<p className="p-4 text-slate-500">No hi ha registres individuals en aquest període.</p>}</div>
       </section>
 

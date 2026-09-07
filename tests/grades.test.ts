@@ -239,14 +239,14 @@ import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import StudentsView from '../src/components/StudentsView';
 
-test('La fitxa respecta períodes i notes manuals i recalcula les notes esborrades',()=>{
+test('La fitxa respecta períodes, notes manuals i les notes esborrades queden pendents',()=>{
   const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-01'}];
   assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,3.2);
   const manual=calc(s,state.activities);manual.finalGrade={score:2.5,qual:'AS',isManual:true};
   state.termGradesRecords=[{id:'s_t1_mean',subjectId:'s',periodId:'t1',students:{u:manual}}];
   assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,2.5);
   assert.equal(studentPeriodGrade(state,s,'u','t1','median').finalGrade.score,3.2);
-  state.termGradesRecords[0].cleared=true;assert.equal(studentPeriodGrade(state,s,'u','t1','mean').finalGrade.score,3.2);
+  state.termGradesRecords=state.termGradesRecords.map(r=>({...r,cleared:true}));assert.equal(studentPeriodGrade(state,s,'u','t1','mean'),undefined);assert.equal(studentPeriodGrade(state,s,'u','t1','mean',true).finalGrade.score,3.2);
 });
 
 test('El seguiment individual limita alumne, assignatura i dates sense inventar assistència',()=>{
@@ -315,4 +315,46 @@ test('Les mesures estan ocultes a la fitxa, disponibles al hover de psi i els co
  assert.ok(html.indexOf('COMENTARI_GENERAL')<html.indexOf('PSI i mesures de suport'));
  const marker=renderToStaticMarkup(createElement(StudentName,{state,student:sub().students[0]}));
  assert.ok(marker.includes('title="MESURES_RESERVADES"'));assert.ok(marker.includes('aria-expanded="false"'));assert.ok(!marker.includes('<dialog'));
+});
+
+
+import {periodGrades,gradeCalculationCount} from '../src/utils/gradeSelectors';
+import {summarizeAttendance,subjectAttendance,studentAttendance} from '../src/utils/attendance';
+import RendimentView from '../src/components/RendimentView';
+import QualificacionsView from '../src/components/QualificacionsView';
+test('Un càlcul per mètode, compartit entre quadern, fitxa i informes; els comentaris no invaliden notes',()=>{
+ const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];
+ const before=gradeCalculationCount();const first=periodGrades(state,s,'annual','mean');assert.equal(gradeCalculationCount()-before,1);
+ assert.equal(studentPeriodGrade(state,s,'u','annual','mean'),first.u);assert.equal(periodGrades(state,s,'annual','mean'),first);
+ const comments={...state,periodComments:{s:{annual:{u:'Comentari'}}},studentProfiles:{u:{psi:'PSI',supportMeasures:'Suport'}}};assert.equal(periodGrades(comments,s,'annual','mean'),first);
+ const activityComment={...comments,activities:comments.activities.map(a=>({...a,grades:{u:{...a.grades.u,comment:'Nou comentari'}}}))};assert.equal(periodGrades(activityComment,s,'annual','mean'),first);assert.equal(gradeCalculationCount()-before,1);
+ const changed={...activityComment,activities:activityComment.activities.map(a=>({...a,grades:numericGrade(4)}))};assert.equal(periodGrades(changed,s,'annual','mean').u.finalGrade.score,1.6);assert.equal(gradeCalculationCount()-before,2);
+ const changedSubject={...s,compSettings:{...s.compSettings,thresholds:{AS:1,AN:2,AE:3}}};assert.equal(periodGrades(changed,changedSubject,'annual','mean').u.finalGrade.qual,'AS');
+});
+
+test('Notes manuals, NP, exempcions i pesos coincideixen en cada mètode; esborrar no fa reaparèixer notes en altres vistes',()=>{
+ const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;
+ state.activities=[act({grades:numericGrade(8)}),act({id:'np',weight:2,grades:{u:{status:'not_submitted'}}}),act({id:'ex',grades:{u:{status:'exempt',score:10}}})];
+ for(const mode of ['mean','median','mode'] as const){const expected=calculateCompetencialTermGrades(s,state.activities,comps,criteria,undefined,mode).u;const actual=periodGrades(state,s,'annual',mode).u;assert.deepEqual(actual.finalGrade,expected.finalGrade);assert.deepEqual(actual.criteria,expected.criteria);}
+ const manual=structuredClone(periodGrades(state,s,'annual','mean'));manual.u.finalGrade={score:2.75,qual:'AS',isManual:true};
+ state.termGradesRecords=[{id:'s_annual_mean',subjectId:'s',periodId:'annual',students:manual}];assert.equal(studentPeriodGrade(state,s,'u','annual','mean').finalGrade.score,2.75);
+ state.termGradesRecords=state.termGradesRecords.map(r=>({...r,cleared:true}));assert.deepEqual(periodGrades(state,s,'annual','mean'),{});assert.equal(studentPeriodGrade(state,s,'u','annual','mean'),undefined);assert.equal(buildStudentReport(state,'u').evaluations.find(e=>e.period.id==='annual').actual.mean,undefined);
+ state.termGradesRecords=[];assert.ok(periodGrades(state,s,'annual','mean').u.finalGrade.score!==null);
+});
+
+test('Assistència pendent no és presència: resum, fitxa i percentatge comparteixen criteri',()=>{
+ assert.deepEqual(summarizeAttendance([undefined,{status:'pending',posComments:['Bé']},{status:'present'},{status:'late10'},{status:'absent'}]),{present:2,late:1,absent:1,recorded:3,pending:2,total:5,rate:67});
+ assert.equal(summarizeAttendance([undefined]).rate,null);
+ const state=getInitialState(),s=sub();state.subjects=[s];state.config.startDate='2026-09-07';state.config.endDate='2026-09-30';state.config.holidays=[];state.config.timeSlots=[{id:'slot',name:'Classe'}];state.schedule=[{id:'sch',subjectId:'s',dayOfWeek:1,timeSlotId:'slot'}];
+ state.sessionLogs=[{id:'log',scheduleItemId:'sch',subjectId:'s',date:'2026-09-07',comments:'',attendance:{u:{status:'pending',posComments:['Comentari sense confirmar assistència']}}}];
+ assert.equal(subjectAttendance(state,s,'annual','2026-09-14').u.pending,2);assert.equal(subjectAttendance(state,s,'annual','2026-09-14').u.rate,null);
+ state.sessionLogs=state.sessionLogs.map(l=>({...l,attendance:{u:{status:'late10'}}}));const group=subjectAttendance(state,s,'annual','2026-09-14').u;
+ assert.equal(group.rate,100);assert.equal(group.pending,1);assert.equal(group.late,1);assert.deepEqual(studentAttendance(state,'u','annual','all','2026-09-14'),group);
+});
+
+test('Rendiment mostra la nota d’activitats i no la puntuació històrica de sessió',()=>{
+ const state=getInitialState(),s=sub();state.subjects=[s];state.competencies=comps;state.criteria=criteria;state.activities=[act({grades:numericGrade(8)})];state.config.terms=[{id:'t1',name:'T1',startDate:'2026-09-01',endDate:'2026-12-31'}];
+ state.sessionLogs=[{id:'log',subjectId:'s',date:'2026-09-01',scheduleItemId:'sch',comments:'',attendance:{u:{status:'present',score:1}}}];
+ const render=(component:any,props:any)=>renderToStaticMarkup(createElement(component,props));
+ const performance=render(RendimentView,{state}),grades=render(QualificacionsView,{state,onChangeState:()=>{}});assert.ok(performance.includes('3.20'));assert.ok(grades.includes('3.20'));assert.ok(performance.includes('Puntuacions històriques'));
 });

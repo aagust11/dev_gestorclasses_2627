@@ -1,3 +1,4 @@
+import {summarizeAttendance} from '../utils/attendance';
 import StudentName from './StudentName';
 /**
  * @license
@@ -150,7 +151,7 @@ export default function SessionView({
 
   // Student list logger helper
   const updateStudentLog = (studentId: string, mutator: (prev: StudentLog) => StudentLog) => {
-    const defaultLog: StudentLog = { status: 'present' };
+    const defaultLog: StudentLog = { status: 'pending' };
     const current = attendance[studentId] || defaultLog;
     const nextLog = mutator(current);
     
@@ -375,9 +376,8 @@ export default function SessionView({
   }
 
   // Attendance statistics
-  const presentsCount = students.filter(s => (attendance[s.id]?.status || 'present') === 'present').length;
-  const lateCount = students.filter(s => ['late10', 'lateMore10'].includes(attendance[s.id]?.status)).length;
-  const absentCount = students.filter(s => attendance[s.id]?.status === 'absent').length;
+  const attendanceSummary=summarizeAttendance(students.map(s=>attendance[s.id]));
+  const presentsCount=attendanceSummary.present, lateCount=attendanceSummary.late, absentCount=attendanceSummary.absent;
 
   return (
     <div id="session-view-root" className="space-y-5">
@@ -557,7 +557,7 @@ export default function SessionView({
                   {!subject.isGeneral && <label className="flex items-center gap-2"><Search size={16} className="text-slate-400" aria-hidden="true"/><input type="search" aria-label="Cercar alumne a la sessió" placeholder="Cercar alumne…" className="w-48 max-w-full text-sm" value={studentSearch} onChange={e=>setStudentSearch(e.target.value)}/></label>}
                   </div>
                   <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 font-medium mt-0.5">
-                    <span>{students.length} alumnes</span>
+                    <span>{students.length} alumnes</span><span>· {attendanceSummary.pending} pendents</span>
                     <span>•</span>
                     <span className="text-emerald-700 font-bold">{presentsCount} Pres.</span>
                     <span>•</span>
@@ -611,7 +611,7 @@ export default function SessionView({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {visibleStudents.map(({student, idx}) => {
-                      const sLog = attendance[student.id] || { status: 'present' };
+                      const sLog = attendance[student.id] || { status: 'pending' };
                       const inputState = openInputs[student.id] || {};
                       
                       const posList = sLog.posComments || (sLog.posComment ? [sLog.posComment] : []);
@@ -643,6 +643,7 @@ export default function SessionView({
                           {/* Col 3: Attendance buttons (Pres, <10m, >=10m, Falta) */}
                           <td className="py-2 px-3">
                             <div className="inline-flex rounded-lg border border-slate-200/80 p-0.5 bg-white shadow-2xs">
+                              <button type="button" title="Sense assistència confirmada" onClick={()=>handleStatusChange(student.id,'pending')} className={`px-2 py-1 rounded text-[10.5px] font-bold ${sLog.status==='pending'?'bg-slate-600 text-white':'text-slate-500'}`}>Pendent</button>
                               <button
                                 type="button"
                                 id={`attendance-present-${student.id}`}

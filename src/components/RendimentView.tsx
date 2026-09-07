@@ -1,3 +1,7 @@
+import {periodGrades} from '../utils/gradeSelectors';
+import {subjectAttendance} from '../utils/attendance';
+import GradeComparison from './GradeComparison';
+import {comparedGradeText} from '../utils/studentReport';
 import StudentName from './StudentName';
 /**
  * @license
@@ -20,7 +24,7 @@ import {
   ThumbsUp,
   FlameKindling
 } from 'lucide-react';
-import { AppState, Subject, Student, SessionLog } from '../types';
+import { AppState, Subject, Student, SessionLog, CalculationMode } from '../types';
 import { getProgrammedSessionsForSubject } from '../utils/dateHelpers';
 
 interface RendimentViewProps {
@@ -49,6 +53,10 @@ export default function RendimentView({ state }: RendimentViewProps) {
 
   // State to filter calculations by course or specific trimester
   const [selectedPeriodId, setSelectedPeriodId] = useState<string>('curs');
+  const [method,setMethod]=useState<CalculationMode>('mean');
+  const gradePeriod=selectedPeriodId==='curs'?'annual':selectedPeriodId;
+  const grades=activeSubject?periodGrades(state,activeSubject,gradePeriod,method):{};
+  const automaticGrades=activeSubject?periodGrades(state,activeSubject,gradePeriod,method,true):{};
 
   const todayStr = useMemo(() => {
     const d = new Date();
@@ -99,7 +107,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
       calculationPeriod.startDate,
       calcEndDate
     );
-  }, [state, selectedSubId, calculationPeriod, calcEndDate, isPosterior]);
+  }, [state.schedule,state.config.holidays,state.config.timeSlots,state.config.substitutions, selectedSubId, calculationPeriod, calcEndDate, isPosterior]);
 
   // Filter out any logged sessions relevant to this subject in the calculation period (up to calcEndDate)
   const activeSubjectSessions = useMemo(() => {
@@ -121,37 +129,14 @@ export default function RendimentView({ state }: RendimentViewProps) {
   const studentStats = useMemo(() => {
     if (!activeSubject || activeStudents.length === 0) return [];
 
-    const totalSessions = programmedSessions.length;
 
     return activeStudents.map(student => {
-      let presentCount = 0;
-      let lateCount = 0;
-      let absentCount = 0;
-      
-      let scoreSum = 0;
-      let scoresCount = 0;
-
       let positiveCommentsCount = 0;
       let incidentCommentsCount = 0;
 
       activeSubjectSessions.forEach(session => {
         const log = session.attendance?.[student.id];
         if (log) {
-          if (log.status === 'present') {
-            presentCount++;
-          } else if (log.status === 'late10' || log.status === 'lateMore10') {
-            lateCount++;
-            presentCount++; 
-          } else if (log.status === 'absent') {
-            absentCount++;
-          }
-
-          // Compute grades
-          if (typeof log.score === 'number') {
-            scoreSum += log.score;
-            scoresCount++;
-          }
-
           // Comments metrics
           const posList = log.posComments || (log.posComment ? [log.posComment] : []);
           positiveCommentsCount += posList.length;
@@ -161,29 +146,26 @@ export default function RendimentView({ state }: RendimentViewProps) {
         }
       });
 
-      // Default attendance calculations counts as present everything unless marked as absent:
-      // Formula: 1 - (faltes / total classes)
-      const attendanceRate = isPosterior 
-        ? null 
-        : (totalSessions > 0 
-            ? Math.max(0, Math.round((1 - (absentCount / totalSessions)) * 100)) 
-            : 100);
-
-      const averageGrade = scoresCount > 0 ? parseFloat((scoreSum / scoresCount).toFixed(2)) : null;
+      const attendance=subjectAttendance(state,activeSubject,gradePeriod,todayStr)[student.id];
+      const attendanceRate=attendance.rate;
+      const grade=grades[student.id]?.finalGrade;
+      const averageGrade=grade?.score??null;
 
       return {
         student,
         attendanceRate,
-        presentCount: isPosterior ? 0 : (totalSessions - absentCount),
-        lateCount,
-        absentCount,
-        totalSessions,
+        presentCount:attendance.present,
+        lateCount:attendance.late,
+        absentCount:attendance.absent,
+        totalSessions:attendance.recorded,
+        pendingCount:attendance.pending,
+        grade,automatic:automaticGrades[student.id]?.finalGrade,isFailed:grade?.qual==='NA',
         averageGrade,
         positiveCommentsCount,
         incidentCommentsCount
       };
     });
-  }, [activeSubject, activeStudents, activeSubjectSessions, programmedSessions, isPosterior]);
+  }, [activeSubject, activeStudents, activeSubjectSessions, programmedSessions, isPosterior, grades, automaticGrades, gradePeriod, todayStr]);
 
   // Calculate high level metrics
   const groupMetrics = useMemo(() => {
@@ -202,7 +184,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
       if (st.averageGrade !== null) {
         gradeSum += st.averageGrade;
         gradeCount++;
-        if (st.averageGrade < 5) countLowGrade++;
+        if (st.isFailed) countLowGrade++;
       }
       if (st.attendanceRate !== null) {
         attendSum += st.attendanceRate;
@@ -234,7 +216,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
 
     // Risk Grade (< 5)
     if (filterRiskGrade) {
-      result = result.filter(st => st.averageGrade !== null && st.averageGrade < 5);
+      result = result.filter(st => st.isFailed);
     }
 
     // Risk Attendance (< 80%)
@@ -264,27 +246,15 @@ export default function RendimentView({ state }: RendimentViewProps) {
   const handleExportCSVReport = () => {
     if (!activeSubject) return;
     
-    let csvContent = "data:text/csv;charset=utf-8,";
-    csvContent += "Alumne;Assistencia %;Presencies;Retards;Absencies;Sessions Registrades;Nota Mitjana;Mesures Positives;Incidencies\n";
-    
-    studentStats.forEach(st => {
-      const gradeText = st.averageGrade !== null ? st.averageGrade.toString() : "N/A";
-      const row = `${st.student.name};${st.attendanceRate}%;${st.presentCount};${st.lateCount};${st.absentCount};${st.totalSessions};${gradeText};${st.positiveCommentsCount};${st.incidentCommentsCount}`;
-      csvContent += row + "\n";
-    });
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `informe_rendiment_${activeSubject.name.replace(/\s+/g, '_')}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const rows=[['Alumne','Assistència %','Presències (inclou retards)','Retards','Faltes','Registrades','Pendents',`Nota període /${activeSubject.evaluationType==='numeric'?10:4}`, 'Positius','Incidències'],...studentStats.map(st=>[st.student.name,st.attendanceRate??'',st.presentCount,st.lateCount,st.absentCount,st.totalSessions,st.pendingCount,comparedGradeText(st.grade,st.automatic),st.positiveCommentsCount,st.incidentCommentsCount])];
+    const text='\ufeff'+rows.map(row=>row.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+    const url=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8;'})),link=document.createElement('a');link.href=url;link.download=`informe_rendiment_${activeSubject.name.replace(/\s+/g,'_')}.csv`;link.click();setTimeout(()=>URL.revokeObjectURL(url),30000);
   };
 
   return (
     <div id="section-rendiment" className="space-y-6">
       
+      <p className="ds-panel text-sm text-slate-600">Les notes del període coincideixen amb Qualificacions: activitats, pesos, llindars, NP, exempcions i ajustos manuals. L’assistència només compta els registres confirmats fins avui; una sessió pendent no equival a presència. Les puntuacions històriques de sessió són informatives i no entren a la nota.</p>
       {/* Title block */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -332,6 +302,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
             </select>
           </div>
 
+          <label className="ds-field">Càlcul<select value={method} onChange={e=>setMethod(e.target.value as CalculationMode)}><option value="mean">Mitjana</option><option value="median">Mediana</option><option value="mode">Moda</option></select></label>
           {activeSubject && studentStats.length > 0 && (
             <button
               id="btn-export-reports-csv"
@@ -368,7 +339,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
             {/* Widget 2: Count of Sessions Logged */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4.5 shadow-sm flex items-center justify-between">
               <div>
-                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Sessions Registrades</span>
+                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Sessions amb algun registre</span>
                 <span className="text-2xl font-black text-slate-800 tracking-tight block mt-0.5">{activeSubjectSessions.length}</span>
                 <span className="text-[10px] text-slate-400 font-medium block mt-1">De {programmedSessions.length} programades</span>
               </div>
@@ -380,7 +351,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
             {/* Widget 3: Group Average Score */}
             <div className="bg-white border border-slate-200 rounded-2xl p-4.5 shadow-sm flex items-center justify-between" style={{ borderLeft: `4px solid ${activeSubject.color}` }}>
               <div>
-                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nota Mitjana del Grup</span>
+                <span className="block text-[10px] uppercase font-bold text-slate-400 tracking-wider">Nota del grup (/{activeSubject.evaluationType==='numeric'?10:4})</span>
                 <span className="text-2xl font-black text-slate-800 tracking-tight block mt-0.5">{groupMetrics.avgGrade}</span>
                 <span className="text-[10px] text-slate-400 font-medium block mt-1">Sobre base de 10 punts</span>
               </div>
@@ -419,7 +390,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
           <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
             <h3 className="font-bold text-slate-900 text-sm mb-4 inline-flex items-center gap-2">
               <BarChart3 className="w-4 h-4 text-slate-400" />
-              Progés Mitjà del Grup per Sessions de Classe
+              Puntuacions històriques de les sessions (0–10)
             </h3>
 
             {activeSubjectSessions.length === 0 ? (
@@ -469,7 +440,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
                           <div 
                             className="w-full rounded-t transition-all duration-300"
                             style={{ 
-                              height: `${percentage || 8}%`, 
+                              height: `${hasGrading?percentage:8}%`, 
                               backgroundColor: percentage >= 65 ? '#10b981' : percentage >= 49 ? '#f59e0b' : hasGrading ? '#f43f5e' : '#e2e8f0'
                             }}
                           />
@@ -521,7 +492,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
                   }`}
                 >
                   <Filter className="w-3 h-3" />
-                  <span>Suspesos (&lt;5)</span>
+                  <span>Qualificació NA</span>
                 </button>
 
                 <button
@@ -560,11 +531,11 @@ export default function RendimentView({ state }: RendimentViewProps) {
                   <thead>
                     <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
                       <th className="py-3 px-6">Alumne</th>
-                      <th className="py-3 px-6 text-center">Sessions Loguejades</th>
+                      <th className="py-3 px-6 text-center">Registrades / pendents</th>
                       <th className="py-3 px-6 text-center">Assistència %</th>
                       <th className="py-3 px-6 text-center">Presencial / Retards / Absències</th>
-                      <th className="py-3 px-6 text-center">Mesures O.D. / Incidències</th>
-                      <th className="py-3 px-6 text-center">Nota Mitjana (0-10)</th>
+                      <th className="py-3 px-6 text-center">Positius / Incidències</th>
+                      <th className="py-3 px-6 text-center">Nota del període (/{activeSubject.evaluationType==='numeric'?10:4})</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs">
@@ -575,12 +546,12 @@ export default function RendimentView({ state }: RendimentViewProps) {
                       lateCount, 
                       absentCount, 
                       totalSessions, 
-                      averageGrade,
+                      averageGrade,grade,automatic,pendingCount,isFailed,
                       positiveCommentsCount,
                       incidentCommentsCount
                     }) => {
                       const isLowAttendance = attendanceRate !== null && attendanceRate < 80;
-                      const isLowGrade = averageGrade !== null && averageGrade < 5;
+                      const isLowGrade = isFailed;
 
                       return (
                         <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
@@ -588,12 +559,12 @@ export default function RendimentView({ state }: RendimentViewProps) {
                             <StudentName state={state} student={student}/>
                           </td>
                           <td className="py-3 px-6 text-center text-slate-500">
-                            {attendanceRate !== null ? totalSessions : ''}
+                            {totalSessions} / {pendingCount}
                           </td>
                           <td className="py-3 px-6">
                             <div className="flex items-center justify-center space-x-2">
                               <span className={`font-black ${isLowAttendance ? 'text-rose-600 font-extrabold' : 'text-slate-700'}`}>
-                                {attendanceRate !== null ? `${attendanceRate}%` : ''}
+                                {attendanceRate !== null ? `${attendanceRate}%` : 'Pendent'}
                               </span>
                               
                               {/* Small simple progress visual bar */}
@@ -608,16 +579,16 @@ export default function RendimentView({ state }: RendimentViewProps) {
                             </div>
                           </td>
                           <td className="py-3 px-6 text-center">
-                            {attendanceRate !== null ? (
+                            {(
                               <div className="inline-flex space-x-2 text-[11px] font-mono">
-                                <span className="text-emerald-600 font-bold" title="Prèsències">{presentCount}p</span>
+                                <span className="text-emerald-600 font-bold" title="Presències confirmades, inclosos els retards">{presentCount}p</span>
                                 <span className="text-slate-400" title="Retards">{lateCount}r</span>
                                 <span className="text-rose-500 font-bold" title="Absències">{absentCount}a</span>
                               </div>
-                            ) : ''}
+                            )}
                           </td>
                           <td className="py-3 px-6 text-center">
-                            {attendanceRate !== null ? (
+                            {(
                               <div className="inline-flex space-x-2.5 text-[11px]">
                                 {positiveCommentsCount > 0 && (
                                   <span className="text-indigo-650 bg-indigo-50 font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-0.5" title="Accions docents positives">
@@ -635,24 +606,10 @@ export default function RendimentView({ state }: RendimentViewProps) {
                                   <span className="text-slate-350 italic">-</span>
                                 )}
                               </div>
-                            ) : ''}
+                            )}
                           </td>
                           <td className="py-3 px-6 text-center">
-                            {averageGrade !== null ? (
-                              <div className="inline-flex items-center space-x-2">
-                                <span className={`text-base font-black px-2 py-0.5 rounded-lg font-mono ${
-                                  averageGrade >= 6.5 
-                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' 
-                                    : averageGrade >= 5 
-                                      ? 'bg-amber-50 text-amber-700 border border-amber-100' 
-                                      : 'bg-rose-50 text-rose-700 border border-rose-100'
-                                }`}>
-                                  {averageGrade.toFixed(2)}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-450 italic text-[11px]">Sense notes</span>
-                            )}
+                            <GradeComparison grade={grade} automatic={automatic}/>
                           </td>
                         </tr>
                       );

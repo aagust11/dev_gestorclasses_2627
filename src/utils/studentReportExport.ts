@@ -1,6 +1,6 @@
 import {StudentReport, reportSections} from './studentReport';
 const filename=(name:string)=>`Informe_${name.replace(/[^\p{L}\p{N}_-]+/gu,'_')}`;
-const summary=(r:StudentReport)=>`${r.totals.absent} faltes · ${r.totals.late} retards · ${r.totals.pos} comentaris positius · ${r.totals.incident} incidències. Comptats per sessió registrada.`;
+const summary=(r:StudentReport)=>`${r.totals.absent} faltes · ${r.totals.late} retards · ${r.totals.pos} comentaris positius · ${r.totals.incident} incidències. Assistència fins avui: ${r.attendance.rate===null?'pendent':r.attendance.rate+'%'}; ${r.attendance.recorded} registres, ${r.attendance.pending} pendents. Les pendents no entren al percentatge.`;
 export async function buildStudentWord(report:StudentReport) {
   const {Document,Paragraph,TextRun,Table,TableRow,TableCell,WidthType,HeadingLevel,Packer}=await import('docx');
   const paragraph=(text:string)=>new Paragraph({children:text.split('\n').flatMap((line,i)=>[new TextRun({text:line,break:i?1:0})]),spacing:{after:100}});

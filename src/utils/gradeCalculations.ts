@@ -222,20 +222,23 @@ export function getActivityScore(act: CurricularActivity, studentId: string, sub
 function computeCompetencial(subject: Subject, activities: CurricularActivity[], competencies: Competency[], criteria: EvalCriterion[], existing: Record<string,TermStudentGrades> | undefined, mode: CalculationMode) {
   const result: Record<string,TermStudentGrades>={}, settings=getCompSettings(subject);
   const asGrade=(score: number) => ({score,qual: scoreToCompetencial(score, settings.thresholds)});
+  const occurrences=new Map<string,{activity:CurricularActivity;id:string;weight:number}[]>();
+  for(const activity of activities)for(const id of activity.criteriaIds||[]){const source=sourceCriterionId(activity,id);const rows=occurrences.get(source)||[];rows.push({activity,id,weight:(activity.weight??1)*(activity.criteriaWeights?.[id]??1)});occurrences.set(source,rows);}
+  const criteriaByCompetency=new Map(competencies.map(c=>[c.id,criteria.filter(cr=>cr.competencyId===c.id)]));
   for (const st of subject.students) {
     const old=existing?.[st.id];
     const ca: TermStudentGrades['criteria']={}, ce: TermStudentGrades['competencies']={};
     for (const cr of criteria) {
       const manual=old?.criteria?.[cr.id];
       if (manual?.isManual && valid(manual.score)) { ca[cr.id]={...asGrade(manual.score),isManual:true}; continue; }
-      const entries=activities.flatMap(a=>(a.criteriaIds || []).filter(id=>sourceCriterionId(a,id)===cr.id).map(id=>({score:getCriterionScore(a,st.id,id,subject),weight:(a.weight ?? 1)*(a.criteriaWeights?.[id] ?? 1)})));
+      const entries=(occurrences.get(cr.id)||[]).map(({activity,id,weight})=>({score:getCriterionScore(activity,st.id,id,subject),weight}));
       const score=weightedStatistic(entries,mode);
       if (score !== null) ca[cr.id]=asGrade(score);
     }
     for (const comp of competencies) {
       const manual=old?.competencies?.[comp.id];
       if (manual?.isManual && valid(manual.score)) { ce[comp.id]={...asGrade(manual.score),isManual:true}; continue; }
-      const score=weightedStatistic(criteria.filter(c=>c.competencyId===comp.id && ca[c.id]).map(c=>({score:ca[c.id].score,weight:1})),mode);
+      const score=weightedStatistic((criteriaByCompetency.get(comp.id)||[]).filter(c=>ca[c.id]).map(c=>({score:ca[c.id].score,weight:1})),mode);
       if (score !== null) ce[comp.id]=asGrade(score);
     }
     const failed=Object.values(ce).filter(x=>x.score < settings.thresholds.AS).length;
@@ -341,4 +344,14 @@ export function buildActivitiesWorkbook(subject:Subject,activities:CurricularAct
 }
 export function exportActivitiesToExcel(subject: Subject, activities: CurricularActivity[], criteria: EvalCriterion[], students: Subject['students']) {
   XLSX.writeFile(buildActivitiesWorkbook(subject,activities,criteria,students),`Activitats_${safeName(subject.name)}.xlsx`);
+}
+
+
+// One method only: shared by screen selectors and explicit recalculation actions.
+export function calculateSubjectMode(subject:Subject,activities:CurricularActivity[],competencies:Competency[],criteria:EvalCriterion[],existing:Record<string,TermStudentGrades>|undefined,mode:CalculationMode):Record<string,TermStudentGrades> {
+  const competency=computeCompetencial(subject,activities,competencies,criteria,existing,mode);
+  if(subject.evaluationType!=='numeric')return competency;
+  const numeric=computeNumeric(subject,activities,existing,mode);
+  for(const id of Object.keys(numeric)){numeric[id].criteria=competency[id].criteria;numeric[id].competencies=competency[id].competencies;}
+  return numeric;
 }
