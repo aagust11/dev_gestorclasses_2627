@@ -186,3 +186,50 @@ test('Els comentaris del període persisteixen separats per assignatura i perío
   const cleared=buildTermGradesWorkbook(sub(),'T1',criteria,comps,{},loaded.periodComments.s.t1);
   assert.equal(XLSX.utils.sheet_to_json<any[]>(cleared.Sheets.Qualificacions,{header:1})[3].at(-1),'Bon progrés');
 });
+
+test('NP imposa zero a tots els criteris i Exempt els exclou en els tres mètodes',()=>{
+  const s=sub();s.compSettings.values.NA=1;
+  const a=act({criteriaIds:['ca1','repeat','ca2'],criteriaReferences:{repeat:'ca1'},grades:{u:{status:'not_submitted',criteriaGrades:{ca1:{rawScore:10,maxScore:10}},comment:'Conservat'}}});
+  const saved=structuredClone(a.grades);
+  for(const id of a.criteriaIds)assert.equal(getCriterionScore(a,'u',id,s),0);
+  assert.equal(getActivityScore(a,'u',s),0);
+  const good=act({id:'good',criteriaIds:['ca1','ca2'],grades:{u:{criteriaGrades:{ca1:{rawScore:10,maxScore:10},ca2:{rawScore:10,maxScore:10}}}}});
+  for(const method of ['mean','median','mode'] as const){
+    const np=calculateCompetencialTermGrades(s,[a,good],comps,criteria,undefined,method).u;
+    assert.ok(Math.abs(np.finalGrade.score-({mean:5/3,median:1,mode:0}[method]))<1e-10);
+    const exempt=structuredClone(a);exempt.grades.u.status='exempt';
+    assert.equal(getActivityScore(exempt,'u',s),null);
+    const result=calculateCompetencialTermGrades(s,[exempt,good],comps,criteria,undefined,method).u;
+    assert.equal(result.criteria.ca1.score,4);assert.equal(result.criteria.ca2.score,4);assert.equal(result.competencies.ce1.score,4);assert.equal(result.finalGrade.score,4);
+    const only=calculateCompetencialTermGrades(s,[exempt],comps,criteria,undefined,method).u;
+    assert.deepEqual(only.criteria,{});assert.deepEqual(only.competencies,{});assert.equal(only.finalGrade.score,null);
+  }
+  assert.deepEqual(a.grades,saved);delete a.grades.u.status;
+  assert.equal(getCriterionScore(a,'u','ca1',s),4);assert.equal(a.grades.u.comment,'Conservat');
+});
+
+test('NP i Exempt s’apliquen també a activitats numèriques sense criteris',()=>{
+  const s=sub();s.evaluationType='numeric';s.numericItems=[{id:'item',code:'I1',name:'Proves',weight:100}];
+  const a=act({criteriaIds:[],numericItemId:'item',grades:{u:{status:'not_submitted',score:9}}});
+  const good=act({id:'good',criteriaIds:[],numericItemId:'item',grades:{u:{score:10}}});
+  for(const method of ['mean','median','mode'] as const){
+    assert.equal(calculateNumericTermGrades(s,[a,good],undefined,method).u.finalGrade.score,method==='mode'?0:5);
+    const exempt=structuredClone(a);exempt.grades.u.status='exempt';
+    assert.equal(calculateNumericTermGrades(s,[exempt,good],undefined,method).u.finalGrade.score,10);
+    assert.equal(calculateNumericTermGrades(s,[exempt],undefined,method).u.finalGrade.score,null);
+  }
+});
+
+test('Excel i recàrrega preserven NP i Exempt sense exposar notes ignorades com a vigents',()=>{
+  const s=sub(),a=act({grades:{u:{status:'not_submitted',criteriaGrades:{ca1:{rawScore:9,maxScore:10}}}}});
+  for(const status of ['not_submitted','exempt'] as const){
+    a.grades.u.status=status;
+    const rows=XLSX.utils.sheet_to_json<any[]>(buildActivitiesWorkbook(s,[a],criteria,s.students).Sheets.Activitats,{header:1});
+    assert.equal(rows[3][2]??null,status==='not_submitted'?0:null);
+    assert.equal(rows[3][4]??null,status==='not_submitted'?0:null);
+    assert.equal(rows[3][5],status==='not_submitted'?'NP':'Exempt');
+    const state=getInitialState();state.activities=[structuredClone(a)];
+    const map=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{setItem:(k:string,v:string)=>map.set(k,v),getItem:(k:string)=>map.get(k)}});
+    saveStateToLocalStorage(state);assert.deepEqual(loadStateFromLocalStorage().activities,state.activities);
+  }
+});

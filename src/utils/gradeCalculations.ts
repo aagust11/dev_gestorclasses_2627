@@ -189,6 +189,8 @@ export function filterActivitiesForPeriod(activities: CurricularActivity[], subj
 // Raw numeric scores take precedence over their cached qualitative equivalent.
 export function getCriterionScore(act: CurricularActivity, studentId: string, criterionId: string, subject: Subject): number | null {
   const settings = getCompSettings(subject), g = act.grades?.[studentId], cg = g?.criteriaGrades?.[criterionId];
+  if (g?.status === 'exempt') return null;
+  if (g?.status === 'not_submitted') return 0;
   if (cg) {
     if (valid(cg.rawScore)) {
       const max = act.criteriaMaxScores?.[criterionId] ?? cg.maxScore ?? 10;
@@ -206,6 +208,8 @@ export function getCriterionScore(act: CurricularActivity, studentId: string, cr
 }
 
 export function getActivityScore(act: CurricularActivity, studentId: string, subject: Subject): number | null {
+  if (act.grades?.[studentId]?.status === 'exempt') return null;
+  if (act.grades?.[studentId]?.status === 'not_submitted') return 0;
   if (act.criteriaIds?.length) {
     return weightedStatistic(act.criteriaIds.map(id => ({ score: getCriterionScore(act,studentId,id,subject), weight: act.criteriaWeights?.[id] ?? 1 })).filter(x => valid(x.score)));
   }
@@ -323,12 +327,13 @@ export function buildActivitiesWorkbook(subject:Subject,activities:CurricularAct
   const rows=students.map(st=>{
     const row:(string|number|null)[]=[st.id,st.name];
     activities.forEach(a=>{
+      const status=a.grades?.[st.id]?.status, statusLabel=status==='not_submitted'?'NP':status==='exempt'?'Exempt':'';
       (a.criteriaIds||[]).forEach(id=>{
         const cg=a.grades?.[st.id]?.criteriaGrades?.[id],score=getCriterionScore(a,st.id,id,subject);
-        row.push(valid(cg?.rawScore)?cg.rawScore:cg?.competencialScore||null,valid(cg?.rawScore)?a.criteriaMaxScores?.[id]??cg.maxScore??10:null,exportNumber(score),score===null?'':scoreToCompetencial(score,settings.thresholds));
+        row.push(status ? (status==='not_submitted'?0:null) : valid(cg?.rawScore)?cg.rawScore:cg?.competencialScore||null,valid(cg?.rawScore)?a.criteriaMaxScores?.[id]??cg.maxScore??10:null,exportNumber(score),statusLabel || (score===null?'':scoreToCompetencial(score,settings.thresholds)));
       });
       const score=getActivityScore(a,st.id,subject);
-      row.push(score===null?null:round(score*(subject.evaluationType==='numeric'?2.5:1)),score===null?'':scoreToCompetencial(score,settings.thresholds),a.grades?.[st.id]?.comment||'');
+      row.push(score===null?null:round(score*(subject.evaluationType==='numeric'?2.5:1)),statusLabel || (score===null?'':scoreToCompetencial(score,settings.thresholds)),a.grades?.[st.id]?.comment||'');
     });
     return row;
   });

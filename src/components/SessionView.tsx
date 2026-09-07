@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
+  Search,
   ArrowLeft, 
   ChevronLeft, 
   ChevronRight, 
@@ -55,6 +56,7 @@ export default function SessionView({
 }: SessionViewProps) {
   // General notes & links states for general teacher tasks
   const [newNote, setNewNote] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [newLinkLabel, setNewLinkLabel] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
 
@@ -80,6 +82,9 @@ export default function SessionView({
   };
 
   const students = getSubjectStudents(subject);
+  const normalizeSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
+  const searchWords = normalizeSearch(studentSearch).split(/\s+/).filter(Boolean);
+  const visibleStudents = students.map((student, idx) => ({student, idx})).filter(({student}) => searchWords.every(word => normalizeSearch(student.name).includes(word)));
 
   // 3. Initialize or locate the existing session log
   const logKey = `${scheduleItemId}_${dateStr}`;
@@ -106,6 +111,7 @@ export default function SessionView({
       setNextSessionNotes('');
       setAttendance({});
     }
+    setStudentSearch('');
     setOpenInputs({});
     setDraftComments({});
   }, [scheduleItemId, dateStr]);
@@ -544,9 +550,11 @@ export default function SessionView({
               <div className="flex items-center gap-2">
                 <UserCheck className="w-4.5 h-4.5 text-sky-600 shrink-0" />
                 <div>
-                  <h3 className="text-xs sm:text-sm font-extrabold text-slate-800">
+                  <div className="flex flex-wrap items-center gap-3"><h3 className="text-xs sm:text-sm font-extrabold text-slate-800">
                     Control d'Assistència i Conducta
                   </h3>
+                  {!subject.isGeneral && <label className="flex items-center gap-2"><Search size={16} className="text-slate-400" aria-hidden="true"/><input type="search" aria-label="Cercar alumne a la sessió" placeholder="Cercar alumne…" className="w-48 max-w-full text-sm" value={studentSearch} onChange={e=>setStudentSearch(e.target.value)}/></label>}
+                  </div>
                   <div className="flex items-center gap-1.5 text-[10.5px] text-slate-500 font-medium mt-0.5">
                     <span>{students.length} alumnes</span>
                     <span>•</span>
@@ -601,7 +609,7 @@ export default function SessionView({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {students.map((student, idx) => {
+                    {visibleStudents.map(({student, idx}) => {
                       const sLog = attendance[student.id] || { status: 'present' };
                       const inputState = openInputs[student.id] || {};
                       
@@ -878,6 +886,7 @@ export default function SessionView({
                         </tr>
                       );
                     })}
+                  {!visibleStudents.length && <tr><td colSpan={4} className="p-4 text-center text-slate-500" role="status">No hi ha alumnes que coincideixin amb la cerca.</td></tr>}
                   </tbody>
                 </table>
               </div>

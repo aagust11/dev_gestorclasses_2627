@@ -159,6 +159,7 @@ export interface StudentCriterionGrade {
 }
 
 export interface StudentActivityGrade {
+  status?: 'not_submitted' | 'exempt'; // Overrides calculated scores without deleting entered grades
   score?: number; // nota global o numèrica de l'activitat
   competencialScore?: 'AE' | 'AN' | 'AS' | 'NA';
   comment?: string; // Únic espai de comentaris per alumne
