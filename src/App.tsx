@@ -1,5 +1,8 @@
 import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport} from './utils/importValidation';
-import {acquireEditorLease,RevisionGuard} from './utils/editorLease';
+import {combineSharedState,EditConflict,withSharedWrite} from './utils/sharedEditing';
+import {noticeKey,reviewedNotices,reviewNotice} from './utils/noticePreferences';
+import DataManagement from './components/DataManagement';
+import {SHARED_STATE_KEY,FILE_LINK_KEY,recoveryRaw,removeRecoveryCopies,normalizeState} from './storage';
 import {prepareImportedState,triggerRawJsonDownload} from './storage';
 import {syncStudentRegistry,identityConflicts} from './utils/studentIdentity';
 import {IdentityReview} from './components/IdentityReview';
@@ -65,127 +68,180 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const current=useRef(localState);
-  const handleRef=useRef<any>(null);
-  const revision=useRef(0);
-  const leaseRef=useRef<ReturnType<typeof acquireEditorLease>|null>(null);
-  const revisionGuard=useRef<RevisionGuard|null>(null);
+  const acknowledged=useRef(localState);
+  const queue=useRef<Promise<void>>(Promise.resolve());
+  const pending=useRef(0);
+  const failed=useRef(false);
   const [canEdit,setCanEdit]=useState(false);
-  const [editError,setEditError]=useState('');
-  const [editIssues,setEditIssues]=useState<ImportIssue[]>([]);
-  const assertEditor=()=>{if(!revisionGuard.current)throw Error('Aquesta pestanya encara no té permís d’edició.');revisionGuard.current.assertCurrent();};
-  const [saveStatus,setSaveStatus]=useState<'saved'|'saving'|'error'>('saved');
-  const [saveError,setSaveError]=useState('');
-  const [importIssues,setImportIssues]=useState<ImportIssue[]>([]);
-  const [importError,setImportError]=useState('');
-  const importFailed=(e:any)=>{setImportError(e.message||String(e));setImportIssues(e instanceof ImportValidationError?e.report.issues:[]);};
-  const approveImport=(value:unknown)=>{
-    const prepared=prepareImportedState(value);setImportIssues(prepared.report.issues);setImportError('');
-    if(prepared.report.issues.length&&!confirm('El fitxer té avisos que cal revisar.\n'+prepared.report.issues.slice(0,8).map(i=>i.path+': '+i.message).join('\n')+'\n\nVols continuar conservant aquestes dades?'))return null;
-    return prepared.state;
-  };
   const [blocked,setBlocked]=useState(false);
   const [busy,setBusy]=useState(false);
-  const [showRecovery,setShowRecovery]=useState(false);
+  const [saveStatus,setSaveStatus]=useState<'saved'|'saving'|'error'>('saved');
+  const [saveError,setSaveError]=useState('');
+  const [editError,setEditError]=useState('');
+  const [editIssues,setEditIssues]=useState<ImportIssue[]>([]);
+  const [importIssues,setImportIssues]=useState<ImportIssue[]>([]);
+  const [importError,setImportError]=useState('');
+  const [conflicts,setConflicts]=useState<string[]>([]);
   const [copies,setCopies]=useState<ReturnType<typeof recoveryCopies>>([]);
   const [availableHandle,setAvailableHandle]=useState<any>(null);
-  const fail=(e:any)=>{setSaveStatus('error');setSaveError(e?.message||String(e));};
-  const install=(next:AppState)=>{current.current=next;setLocalState(next);};
-  const snapshot=(reason:string)=>{createRecoveryCopy(current.current,reason);};
-  const persist=async(next:AppState,target=handleRef.current)=>{
-    try{assertEditor();}catch(e){setCanEdit(false);fail(e);return;}
-    const seq=++revision.current;setSaveStatus('saving');setSaveError('');
-    const errors:string[]=[];
-    try{saveStateToLocalStorage(next);revisionGuard.current!.committed();}catch(e){errors.push('Navegador: '+e.message);}
-    if(target)try{await saveToFileHandle(target,next,assertEditor);}catch(e){errors.push('Fitxer: '+e.message);}
-    if(seq!==revision.current)return;
-    if(errors.length)fail(Error(errors.join(' · ')));else setSaveStatus('saved');
+  const [reviewed,setReviewed]=useState<string[]>(reviewedNotices);
+  const install=(state:AppState)=>{current.current=state;setLocalState(state);};
+  const fail=(e:any)=>{failed.current=true;setSaveStatus('error');setSaveError(e.message||String(e));if(e instanceof EditConflict)setConflicts(e.paths);};
+  const importFailed=(e:any)=>{setImportError(e.message||String(e));setImportIssues(e instanceof ImportValidationError?e.report.issues:[]);setActiveView('dades');};
+  const approveImport=(value:unknown)=>{
+    const prepared=prepareImportedState(value);setImportIssues(prepared.report.issues);setImportError('');
+    if(prepared.report.issues.length&&!confirm(['El fitxer té avisos.',...prepared.report.issues.slice(0,8).map(i=>i.path+': '+i.message),'Vols continuar conservant aquestes dades?'].join(String.fromCharCode(10))))return null;
+    return syncStudentRegistry(prepared.state);
+  };
+  const latest=()=>syncStudentRegistry(loadStateFromLocalStorage());
+  const refreshFile=async()=>{
+    const handle=await getFileHandle();
+    if(localStorage.getItem(FILE_LINK_KEY)==='yes'&&handle){setLinkedFileHandle(handle);setLinkedFileName(handle.name);setAvailableHandle(null);}
+    else {setLinkedFileHandle(null);setLinkedFileName(null);setAvailableHandle(handle||null);}
+  };
+  const writeLinked=async(state:AppState)=>{
+    if(localStorage.getItem(FILE_LINK_KEY)!=='yes')return;
+    const handle=await getFileHandle();
+    if(!handle)throw Error('No es troba el fitxer enllaçat. Torna’l a seleccionar o oblida l’enllaç.');
+    if(await handle.queryPermission({mode:'readwrite'})!=='granted')throw Error('Cal renovar el permís del fitxer. Prem «Renovar permís» o continua només al navegador.');
+    await saveToFileHandle(handle,state);
+  };
+  const roster=(s:AppState)=>JSON.stringify(s.subjects.map(x=>[x.id,x.students.map(st=>st.id)]));
+  const saveChange=(base:AppState,next:AppState,preferLocal=false)=>{
+    let localCommitted=false;
+    pending.current++;setSaveStatus('saving');
+    queue.current=queue.current.then(async()=>{
+      if(failed.current)return;
+      await withSharedWrite(navigator.locks,async()=>{
+        const remote=latest();
+        const merged=syncStudentRegistry(combineSharedState(base,next,remote,false,preferLocal));
+        assertValidImport(merged);
+        if(!remote.identityVersion||roster(remote)!==roster(merged))createRecoveryCopy(remote,'Abans de modificar matrícules o identitats');
+        saveStateToLocalStorage(merged);
+        localCommitted=true;
+        acknowledged.current=next;
+        // Every tab writes the same shared target while holding the transaction lock.
+        await writeLinked(merged);
+      });
+    }).catch(e=>{if(!localCommitted)acknowledged.current=base;fail(e);}).finally(()=>{
+      pending.current--;
+      if(!pending.current&&!failed.current){try{const state=latest();install(state);acknowledged.current=state;setSaveError('');setConflicts([]);setSaveStatus('saved');}catch(e){fail(e);}}
+    });
+    return queue.current;
   };
   useEffect(()=>{
-    let cancelled=false;
-    const load=(editable:boolean)=>{
-      if(cancelled)return;
-      try{
-        if(editable){revisionGuard.current=new RevisionGuard(readStoredRaw,()=>leaseRef.current?.owns()??false);assertEditor();}
-        const loaded=loadStateFromLocalStorage(report=>setImportIssues(report.issues));
-        if(editable&&!loaded.identityVersion)createRecoveryCopy(loaded,'Abans de migrar les identitats');
-        const normalized=syncStudentRegistry(loaded);install(normalized);setCanEdit(editable);
-        if(editable&&!identityConflicts(normalized).length)void persist(normalized,null);
-      }catch(e){setCanEdit(editable);setBlocked(true);importFailed(e);}
-    };
-    const lease=acquireEditorLease(navigator.locks,()=>load(true),()=>load(false),e=>{if(!cancelled){load(false);setSaveError(String(e));}});
-    leaseRef.current=lease;
+    let mounted=true;
+    try{const loaded=loadStateFromLocalStorage(report=>setImportIssues(report.issues));const state=syncStudentRegistry(loaded);install(state);acknowledged.current=state;setCanEdit(!!navigator.locks);}
+    catch(e){setBlocked(true);importFailed(e);setCanEdit(!!navigator.locks);}
+    void refreshFile().catch(e=>setSaveError(e.message));
     const changed=(event:StorageEvent)=>{
-      if(event.storageArea!==localStorage||!revisionGuard.current)return;
-      try{assertEditor();}catch(e){setCanEdit(false);fail(e);}
+      if(!mounted||event.storageArea!==localStorage)return;
+      if(event.key===FILE_LINK_KEY)void refreshFile().catch(e=>setSaveError(e.message));
+      if((event.key===SHARED_STATE_KEY||event.key===null)&&!pending.current&&!failed.current){try{const state=latest();install(state);acknowledged.current=state;setBlocked(false);}catch(e){importFailed(e);setBlocked(true);}}
     };
     window.addEventListener('storage',changed);
-    // Finding a handle must never replace newer browser data or edits made during startup.
-    getFileHandle().then(h=>{if(h)setAvailableHandle(h);}).catch(e=>setSaveError('No s’ha pogut recuperar l’enllaç al fitxer: '+e.message));
-    return()=>{cancelled=true;window.removeEventListener('storage',changed);void waitForFileWrites().finally(()=>lease.dispose());};
+    return()=>{mounted=false;window.removeEventListener('storage',changed);};
   },[]);
   useEffect(()=>{
     const guard=(e:BeforeUnloadEvent)=>{if(saveStatus!=='saved'){e.preventDefault();e.returnValue='';}};
     window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);
   },[saveStatus]);
-  const triggerStateUpdate=(next:AppState)=>{
-    if(blocked||busy)return false;
-    try {
-      assertEditor();
-      try{assertValidImport(next);}catch(e){setEditError('No s’ha desat el canvi. Corregeix els camps indicats; les dades anteriors es conserven.');setEditIssues(e instanceof ImportValidationError?e.report.issues:[]);return false;}
-      setEditError('');setEditIssues([]);
-      const roster=(s:AppState)=>JSON.stringify(s.subjects.map(x=>[x.id,x.students.map(st=>st.id)]));
-      if(roster(next)!==roster(current.current)||JSON.stringify(Object.keys(next.studentRegistry||{}))!==JSON.stringify(Object.keys(current.current.studentRegistry||{})))snapshot('Abans de modificar les matrícules o unificar fitxes');
-      const normalized=syncStudentRegistry(next);install(normalized);void persist(normalized);return true;
-    }catch(e){fail(e);return false;}
+  const triggerStateUpdate=(next:AppState,draftBase?:AppState)=>{
+    if(blocked||busy||!canEdit||failed.current)return false;
+    try{assertValidImport(next);}catch(e){setEditError('Canvi no desat: corregeix els camps indicats.');setEditIssues(e instanceof ImportValidationError?e.report.issues:[]);return false;}
+    setEditError('');setEditIssues([]);
+    const base=draftBase||current.current,normalized=syncStudentRegistry(next);
+    install(normalized);void saveChange(base,normalized);return true;
   };
-  const replaceState=async(value:unknown,reason:string,target=handleRef.current)=>{
+  const retry=async(preferLocal=false)=>{
+    if(!canEdit||busy)return;
+    await queue.current;
+    if(preferLocal&&!confirm('Vols aplicar els canvis d’aquesta pestanya als camps en conflicte? Es conservarà una còpia de la versió compartida.'))return;
+    failed.current=false;setSaveError('');setConflicts([]);
+    if(preferLocal){try{await withSharedWrite(navigator.locks,async()=>{createRecoveryCopy(latest(),'Abans de resoldre un conflicte');});}catch(e){fail(e);return;}}
+    await saveChange(acknowledged.current,current.current,preferLocal);
+  };
+  const discard=async()=>{
+    if(!confirm('Vols descartar els canvis pendents d’aquesta pestanya i carregar la versió compartida? Pots descarregar-los abans en JSON.'))return;
+    await queue.current;
+    try{const state=latest();install(state);acknowledged.current=state;failed.current=false;setBlocked(false);setSaveError('');setConflicts([]);setSaveStatus('saved');}catch(e){importFailed(e);}
+  };
+  const replaceState=async(value:unknown,reason:string)=>{
+    if(!canEdit||failed.current){setActiveView('dades');return;}
+    const base=current.current;
+    const rawBase=readStoredRaw();
     setBusy(true);
     try{
-      assertEditor();
-      let next:AppState;try{next=approveImport(value);}catch(e){importFailed(e);return;}if(!next)return;
-      await waitForFileWrites();
-      assertEditor();
-      if(!blocked)snapshot(reason);
-      else {const raw=readStoredRaw();if(raw)localStorage.setItem('gestor_classes_unreadable_recovery',raw);}
-      if(!next.identityVersion)createRecoveryCopy(next,'Original importat abans de migrar identitats');
-      const normalized=syncStudentRegistry(next);install(normalized);setBlocked(false);setStudentId(null);
-      await persist(normalized,target);
+      const next=approveImport(value);if(!next)return;
+      await queue.current;if(failed.current)return;
+      await withSharedWrite(navigator.locks,async()=>{
+        const remote=blocked?base:latest();
+        if(blocked&&readStoredRaw()!==rawBase)throw new EditConflict(['La còpia compartida ha canviat mentre es preparava la recuperació.']);
+        if(!blocked)combineSharedState(base,next,remote,true);
+        if(blocked){const raw=readStoredRaw();if(raw)localStorage.setItem('gestor_classes_unreadable_recovery',raw);}
+        else createRecoveryCopy(remote,reason);
+        const replacement={...next,workspaceGeneration:crypto.randomUUID()};
+        assertValidImport(replacement);
+        saveStateToLocalStorage(replacement);install(replacement);acknowledged.current=replacement;setBlocked(false);setStudentId(null);
+        await writeLinked(replacement);
+      });
+      setSaveError('');setSaveStatus('saved');
     }catch(e){fail(e);}finally{setBusy(false);}
   };
   const connect=async(handle:any,keepCurrent=false)=>{
-    setBusy(true);
+    if(!canEdit||failed.current)return;
+    const base=current.current,rawBase=readStoredRaw();setBusy(true);
     try{
-      assertEditor();
-      await waitForFileWrites();
       if(!await verifyPermission(handle,true))throw Error('No hi ha permís per escriure al fitxer.');
-      let loaded:AppState;try{loaded=approveImport(await readImportFile(await handle.getFile()));}catch(e){importFailed(e);return;}if(!loaded)return;
-      if(!confirm(keepCurrent?'Vols enllaçar aquest fitxer i desar-hi les dades actuals? Es conservarà una còpia del contingut anterior del fitxer.':'Vols carregar les dades d’aquest fitxer i activar-hi el desat? La còpia actual del navegador es conservarà abans de substituir-la.'))return;
-      assertEditor();
-      if(!blocked)snapshot('Abans de carregar el fitxer enllaçat');
-      else {const raw=readStoredRaw();if(raw)localStorage.setItem('gestor_classes_unreadable_recovery',raw);}
-      if(keepCurrent||!loaded.identityVersion)createRecoveryCopy(loaded,'Fitxer original abans d’enllaçar');
-      await setFileHandle(handle);handleRef.current=handle;setLinkedFileHandle(handle);setLinkedFileName(handle.name);setAvailableHandle(null);
-      const normalized=syncStudentRegistry(keepCurrent?current.current:loaded);install(normalized);setBlocked(false);setStudentId(null);
-      await persist(normalized,handle);
-    }catch(e){fail(e);}finally{setBusy(false);}
+      const loaded=approveImport(await readImportFile(await handle.getFile()));if(!loaded)return;
+      if(!confirm(keepCurrent?'Enllaçar el fitxer conservant les dades compartides? Es copiarà el contingut anterior del fitxer.':'Carregar el fitxer a totes les pestanyes? Es conservarà la versió compartida actual.'))return;
+      await queue.current;if(failed.current)return;
+      await withSharedWrite(navigator.locks,async()=>{
+        const remote=blocked?base:latest();
+        if(blocked&&readStoredRaw()!==rawBase)throw new EditConflict(['La còpia compartida ha canviat mentre es preparava l’enllaç.']);
+        if(!blocked&&!keepCurrent)combineSharedState(base,loaded,remote,true);
+        createRecoveryCopy(loaded,'Fitxer abans d’enllaçar');
+        if(!blocked)createRecoveryCopy(remote,'Dades abans d’enllaçar');
+        const state=keepCurrent?remote:{...loaded,workspaceGeneration:crypto.randomUUID()};
+        assertValidImport(state);
+        await setFileHandle(handle);localStorage.setItem(FILE_LINK_KEY,'yes');
+        saveStateToLocalStorage(state);install(state);acknowledged.current=state;setBlocked(false);await writeLinked(state);
+      });
+      await refreshFile();setSaveError('');setSaveStatus('saved');
+    }catch(e){if(e instanceof ImportValidationError)importFailed(e);else fail(e);}finally{setBusy(false);}
   };
   const handleRegisterFileHandle=async()=>{
+    if(!canEdit)return;
     if(!('showOpenFilePicker' in window)){fileInputRef.current?.click();return;}
     try{const [handle]=await (window as any).showOpenFilePicker({types:[{description:'Fitxer de dades JSON',accept:{'application/json':['.json']}}],multiple:false});if(handle)await connect(handle);}catch(e){if(e.name!=='AbortError')fail(e);}
   };
   const handleReleaseFileHandle=async()=>{
-    setBusy(true);try{assertEditor();await waitForFileWrites();assertEditor();await removeFileHandle();handleRef.current=null;setLinkedFileHandle(null);setLinkedFileName(null);await persist(current.current,null);}catch(e){fail(e);}finally{setBusy(false);}
+    if(!canEdit)return;
+    setBusy(true);
+    try{await queue.current;await withSharedWrite(navigator.locks,async()=>{await removeFileHandle();localStorage.setItem(FILE_LINK_KEY,'no');});await refreshFile();setSaveError('');}
+    catch(e){fail(e);}finally{setBusy(false);}
+    // File failure can be retried against browser storage without discarding pending edits.
   };
+  const renewPermission=async()=>{try{const handle=await getFileHandle();if(!handle)throw Error('Selecciona de nou el fitxer.');if(!await verifyPermission(handle,true))throw Error('Permís no concedit.');await retry();}catch(e){fail(e);}};
   const handleFallbackImportJson=async(e:React.ChangeEvent<HTMLInputElement>)=>{
     const file=e.target.files?.[0];e.target.value='';if(!file)return;
-    setBusy(true);
-    try{const parsed=await readImportFile(file);await replaceState(parsed,'Abans d’importar JSON');}catch(e){importFailed(e);}finally{setBusy(false);}
+    try{await replaceState(await readImportFile(file),'Abans d’importar JSON');}catch(e){importFailed(e);}
   };
   const handleExportBackup=()=>triggerJsonDownload(current.current,'docentsuite_dades_curs.json');
-  const handleResetCourseState=()=>{
-    if(confirm('Vols restablir el curs? Es conservarà una còpia recuperable de les dades actuals.'))void replaceState(getInitialState(),'Abans de restablir el curs');
+  const handleResetCourseState=()=>{if(confirm('Restablir el curs a totes les pestanyes? Es conservarà una còpia recuperable.'))void replaceState(getInitialState(),'Abans de restablir el curs');};
+  const openRecovery=()=>{try{setCopies(recoveryCopies());}catch(e){setSaveError(e.message);}};
+  const clearCopies=async()=>{
+    if(!confirm('Eliminar només les còpies recuperables d’aquest navegador? Les dades actuals es conservaran. Es descarregarà abans un arxiu amb les còpies.'))return;
+    try{await withSharedWrite(navigator.locks,async()=>{triggerRawJsonDownload(recoveryRaw(),'copies_recuperables_arxiu.json');removeRecoveryCopies();});setCopies([]);setSaveError('');}catch(e){fail(e);}
   };
-  const openRecovery=()=>{try{setCopies(recoveryCopies());setShowRecovery(v=>!v);}catch(e){fail(e);}};
+  const notices=[
+    ...(saveError?[{kind:'save',message:saveError}]:[]),
+    ...(editError?[{kind:'edit',message:editError+' '+editIssues.map(i=>i.path+': '+i.message).join(' · ')}]:[]),
+    ...(importError||importIssues.length?[{kind:'import',message:importError+' '+importIssues.map(i=>i.path+': '+i.message).join(' · ')}]:[]),
+    ...(availableHandle?[{kind:'file',message:'Fitxer anterior: '+availableHandle.name}]:[])
+  ].map(n=>({...n,key:noticeKey(n.kind,n.message)}));
+  const review=(key:string)=>{try{setReviewed(reviewNotice(reviewed,key));}catch(e){setSaveError('No s’ha pogut recordar que l’avís està revisat: '+e.message);}};
+  const badge=notices.filter(n=>!reviewed.includes(n.key)).length;
 
   // Handler for opening class details from Horari
   const handleSelectSessionFromGrid = (scheduleItemId: string, date: string) => {
@@ -208,6 +264,7 @@ export default function App() {
 
       {/* Persistent Sidebar */}
       <Sidebar 
+        dataBadge={badge?String(badge):undefined}
         activeView={activeView === 'session_log' ? 'horari' : activeView}
         onViewChange={(view) => {
           setConfigSubjectId(null);
@@ -231,24 +288,18 @@ export default function App() {
               {activeView === 'activitats' && 'Activitats'}
               {activeView === 'qualificacions' && 'Qualificacions'}
               {activeView === 'session_log' && 'Registre de Classe Actiu'}
+              {activeView === 'dades' && 'Dades i desat'}
             </h1>
             <p className="text-xs text-slate-400 font-medium">DocentSuite Workspace</p>
           </div>
         </header>
 
-        <div className="px-8 py-2 border-b bg-white text-sm space-y-2">
-          {!canEdit&&<div role="status" className="text-amber-900 bg-amber-50 p-3 rounded">Mode consulta. Una altra pestanya pot tenir l’edició activa, o les dades han canviat. Tanca la pestanya editora i recarrega aquesta per editar. Si el navegador no admet el bloqueig entre pestanyes, es manté en consulta. <button className="ds-button" onClick={()=>window.location.reload()}>Recarregar per editar</button></div>}
-          {editError&&<div role="alert" className="text-rose-800"><b>{editError}</b><ul className="max-h-48 overflow-auto">{editIssues.filter(i=>i.severity==='error').map((i,n)=><li key={n}>{i.path}: {i.message}</li>)}</ul></div>}
-          <div className="flex flex-wrap items-center gap-3"><span role="status" aria-live="polite" className={saveStatus==='error'?'text-rose-700 font-bold':saveStatus==='saving'?'text-amber-700':'text-emerald-700'}>{saveStatus==='saving'?'Desant…':saveStatus==='error'?'Error de desat':'Desat'} · {linkedFileName?`Navegador i ${linkedFileName}`:'Navegador'}</span><button className="ds-button" disabled={busy||blocked||!canEdit} onClick={()=>void persist(current.current)}>Tornar a desar</button><button className="ds-button" disabled={blocked} onClick={handleExportBackup}>Descarregar JSON actual</button><button className="ds-button" onClick={openRecovery}>Recuperació</button></div>
-          {(importError||importIssues.length>0)&&<section className="ds-panel text-sm" aria-label="Validació de dades"><h2 className="font-bold">{importError?'Importació rebutjada · dades actuals conservades':'Avisos de les dades importades'}</h2>{importError&&!importIssues.length&&<p role="alert">{importError}</p>}<ul className="max-h-60 overflow-auto list-disc pl-5">{importIssues.map((i,n)=><li key={n} className={i.severity==='error'?'text-rose-700':'text-amber-800'}><b>{i.severity==='error'?'Error':'Avís'} · {i.path}</b>: {i.message}</li>)}</ul><p className="text-xs">Les posicions de les llistes comencen a 1. Es mostren fins a 100 incidències.</p><button className="ds-button" onClick={()=>{setImportError('');setImportIssues([]);}}>Tancar avisos</button></section>}
-          {saveError&&<p role="alert" className="text-rose-700">{saveError}. Conserva aquesta pestanya oberta i descarrega una còpia si el problema persisteix.</p>}
-          {availableHandle&&<div>Hi ha un fitxer anterior: {availableHandle.name}. S’ha mantingut la còpia del navegador. <button className="ds-button" disabled={busy||!canEdit} onClick={()=>void connect(availableHandle)}>Carregar i tornar a enllaçar</button><button className="ds-button" disabled={busy||blocked||!canEdit} onClick={()=>void connect(availableHandle,true)}>Enllaçar conservant les dades actuals</button><button className="ds-button" onClick={()=>setAvailableHandle(null)}>Continuar al navegador</button></div>}
-{showRecovery&&<section className="ds-panel space-y-2"><h2 className="font-bold">Còpies recuperables · darreres 3 substitucions</h2><p>Es desen en aquest navegador. Exporta també còpies JSON fora del navegador.</p>{copies.map(c=><div key={c.id} className="flex gap-3 items-center"><span>{new Date(c.date).toLocaleString('ca')} · {c.reason}</span><button className="ds-button" onClick={()=>triggerRawJsonDownload(c.raw,`recuperacio_${c.id}.json`)}>Descarregar</button><button className="ds-button" disabled={busy||!canEdit} onClick={()=>{if(confirm('Vols restaurar aquesta còpia? Es conservarà la versió actual.')){try{void replaceState(parseImportJson(c.raw),'Abans de restaurar una còpia');setShowRecovery(false);}catch(e){importFailed(e);}}}}>Restaurar</button></div>)}<button className="ds-button" disabled={!canEdit||busy} onClick={()=>fileInputRef.current?.click()}>Importar JSON</button>{blocked&&<button className="ds-button" onClick={()=>{const raw=readStoredRaw();if(raw){const url=URL.createObjectURL(new Blob([raw],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='dades_originals_sense_modificar.json';a.click();URL.revokeObjectURL(url);}}}>Descarregar dades originals</button>}</section>}
-        </div>
         {/* Core Router Body */}
-        <main inert={!canEdit} id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+        <main id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
+          {activeView==='dades'?<DataManagement status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
+          {!canEdit&&<p>Mode consulta: el navegador no permet coordinar el desat entre pestanyes.</p>}
           {busy&&<p role="status">Operació de fitxer en curs…</p>}
-          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy}>
+          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||saveStatus==='error'}>
           {activeView === 'horari' && (
             <HorariView 
               state={localState}
@@ -335,6 +386,7 @@ export default function App() {
             />
           )}
           </div>}
+          </>}
         </main>
       </div>
     </div>

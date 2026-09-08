@@ -1,5 +1,7 @@
 # Edició protegida
 
+**Actualització:** l’edició entre pestanyes descrita més avall correspon a la primera protecció. Ha estat substituïda per transaccions curtes amb combinació de canvis. Vegeu `pestanyes-i-avisos.md` per al comportament vigent; les regles de validació i identitat de notes d’aquest document continuen aplicant-se.
+
 ## Canvis que es poden tornar a obrir
 
 Abans d’acceptar una actualització dels formularis, s’apliquen les regles d’importació. Si el nou màxim d’un criteri és inferior a una nota existent, es rebutja l’actualització i l’editor d’activitats conserva l’esborrany. No es retalla ni es prorrateja la nota silenciosament. Les dates incompatibles, cicles i altres errors també es rebutgen abans de substituir l’estat. El missatge identifica el camp i manté les dades anteriors.

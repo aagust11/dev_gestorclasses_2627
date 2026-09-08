@@ -8,6 +8,8 @@ import { AppState } from './types';
 import { getInitialState } from './initialState';
 
 const LOCAL_STORAGE_KEY = 'gestor_classes_app_state';
+export const SHARED_STATE_KEY=LOCAL_STORAGE_KEY;
+export const FILE_LINK_KEY='docentsuite_file_link_enabled';
 const DB_NAME = 'GestorClassesDB';
 const STORE_NAME = 'handles';
 const HANDLE_KEY = 'active_file_handle';
@@ -75,6 +77,8 @@ export function saveToFileHandle(fileHandle:any,state:AppState,guard:()=>void=()
   writeTail=result.catch(()=>{});return result;
 }
 const RECOVERY_KEY=LOCAL_STORAGE_KEY+'_recovery';
+export function recoveryRaw():string{return localStorage.getItem(RECOVERY_KEY)||'[]';}
+export function removeRecoveryCopies():void {localStorage.removeItem(RECOVERY_KEY);}
 export type RecoveryCopy={id:string;date:string;reason:string;raw:string};
 export function recoveryCopies():RecoveryCopy[]{
   const copies=JSON.parse(localStorage.getItem(RECOVERY_KEY)||'[]');

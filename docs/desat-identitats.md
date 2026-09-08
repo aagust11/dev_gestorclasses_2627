@@ -8,7 +8,7 @@ Les escriptures al fitxer es serialitzen i cada petició captura les dades en el
 
 En tornar a obrir, es conserva la còpia del navegador. Un fitxer recordat no la substitueix automàticament: es pot carregar el fitxer o enllaçar-lo conservant les dades actuals.
 
-Recuperació permet descarregar i restaurar les tres darreres còpies prèvies a substitucions, imports, migracions i canvis de matrícules. Abans de restaurar també es copia la versió actual. Si no hi ha espai per fer la còpia, l'operació es bloqueja. Les còpies locals no substitueixen els JSON descarregats fora del navegador. El bloqueig permet una única pestanya editora per origen i perfil de navegador; les altres són de consulta. No hi ha sincronització entre dispositius o navegadors diferents. Vegeu `edicio-protegida.md`.
+Recuperació permet descarregar i restaurar les tres darreres còpies prèvies a substitucions, imports, migracions i canvis de matrícules. Abans de restaurar també es copia la versió actual. Si no hi ha espai per fer la còpia, l'operació es bloqueja. Les còpies locals no substitueixen els JSON descarregats fora del navegador. Es pot editar en diverses pestanyes del mateix navegador i perfil: els desats es coordinen i els conflictes exigeixen resolució. No hi ha sincronització entre dispositius o navegadors diferents. Vegeu `pestanyes-i-avisos.md`.
 
 ## Identitats
 

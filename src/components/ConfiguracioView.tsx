@@ -39,7 +39,7 @@ import { AppState, Holiday, Term, TimeSlot, Subject, Student, Competency, EvalCr
 interface ConfiguracioViewProps {
   initialSubjectId?: string | null;
   state: AppState;
-  onChangeState: (nextState: AppState) => boolean | void;
+  onChangeState: (nextState: AppState,base?:AppState) => boolean | void;
   linkedFileName: string | null;
   onSelectFile: () => void;
   onDisconnectFile: () => void;
@@ -309,6 +309,7 @@ export default function ConfiguracioView({
   const [isCreatingSubject, setIsCreatingSubject] = useState(false);
   const [editingSubId, setEditingSubId] = useState<string | null>(null);
   const [editingSubject, setEditingSubject] = useState<Subject | null>(null);
+  const [subjectDraftBase,setSubjectDraftBase]=useState<AppState|null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('#3b82f6');
   const [editIsGeneral, setEditIsGeneral] = useState(false);
@@ -341,6 +342,7 @@ export default function ConfiguracioView({
   };
 
   const startEditingSubject = (sub: Subject) => {
+    setSubjectDraftBase(state.subjects.some(s=>s.id===sub.id)?state:null);
     setEditingSubject(sub);
     setEditName(sub.name);
     setEditColor(sub.color);
@@ -374,7 +376,7 @@ export default function ConfiguracioView({
         }
         return s;
       })
-    })===false)return;
+    },subjectDraftBase||undefined)===false)return;
 
     setEditingSubject(null);
   };

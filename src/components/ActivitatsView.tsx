@@ -50,7 +50,7 @@ import {
 
 interface ActivitatsViewProps {
   state: AppState;
-  onChangeState: (nextState: AppState) => boolean | void;
+  onChangeState: (nextState: AppState,base?:AppState) => boolean | void;
 }
 
 export default function ActivitatsView({ state, onChangeState }: ActivitatsViewProps) {
@@ -114,6 +114,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   // Form states for creating/editing activity
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftBase,setDraftBase]=useState<AppState|null>(null);
 
   const [activityCode, setActivityCode] = useState<string>('');
   const [activityTitle, setActivityTitle] = useState<string>('');
@@ -207,6 +208,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
   // Reset form
   const resetForm = () => {
+    setDraftBase(null);
     setIsEditing(false);
     setEditingId(null);
     setActivityCode('');
@@ -356,7 +358,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     if(onChangeState({
       ...state,
       activities: updatedActs
-    })===false)return;
+    },draftBase||undefined)===false)return;
 
     resetForm();
   };
@@ -388,6 +390,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const handleStartEdit = (act: CurricularActivity) => {
     setIsEditing(true);
     setEditingId(act.id);
+    setDraftBase(state);
     setActivityCode(act.code);
     setActivityTitle(act.title);
     setActivityDesc(act.description);

@@ -18,11 +18,13 @@ import {
 interface SidebarProps {
   activeView: string;
   onViewChange: (view: string) => void;
+  dataBadge?:string;
 }
 
 export default function Sidebar({
   activeView,
-  onViewChange
+  onViewChange,
+  dataBadge
 }: SidebarProps) {
   const menuItems: { id: string; label: string; icon: any; disabled: boolean; badge?: string }[] = [
     { id: 'horari', label: 'Horari', icon: Calendar, disabled: false },
@@ -33,6 +35,7 @@ export default function Sidebar({
     { id: 'rendiment', label: 'Rendiment i Informes', icon: TrendingUp, disabled: false },
     { id: 'planols', label: 'Plànols', icon: Map, disabled: false },
     { id: 'configuracio', label: 'Configuració', icon: Settings, disabled: false },
+    { id: 'dades', label: 'Dades i desat', icon: Settings, disabled: false, badge:dataBadge },
   ];
 
   return (
