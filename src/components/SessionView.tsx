@@ -1,4 +1,5 @@
 import {summarizeAttendance} from '../utils/attendance';
+import {getTermForDate} from '../utils/dateHelpers';
 import StudentName from './StudentName';
 /**
  * @license
@@ -387,6 +388,7 @@ export default function SessionView({
       
       {/* 1. Header with navigation, indicators for tasks & deadlines */}
       <div id="session-header-nav" className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+        <span className="text-sm font-semibold text-indigo-700">{getTermForDate(dateStr,state.config.terms)?.name}</span>
         
         {/* Left: back button, subject title, session number & franja */}
         <div className="flex items-center space-x-3.5">

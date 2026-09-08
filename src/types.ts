@@ -33,6 +33,8 @@ export interface Holiday {
 }
 
 export interface Term {
+  isPreassessment?: boolean;
+  parentTermId?: string;
   id: string;
   name: string; // e.g., "1r Trimestre"
   startDate: string; // YYYY-MM-DD
@@ -233,6 +235,7 @@ export interface AppState {
   studentProfiles?: Record<string, {notes?: string; psi?: string; supportMeasures?: string; additionalComments?: string}>;
   periodComments?: Record<string, Record<string, Record<string, string>>>; // subject → period → student; shared by all methods
   config: {
+    teacherProfile?: {fullName:string;email:string};
     startDate: string; // YYYY-MM-DD
     endDate: string;   // YYYY-MM-DD
     holidays: Holiday[];

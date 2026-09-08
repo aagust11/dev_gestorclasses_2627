@@ -1,4 +1,5 @@
 import {periodGrades} from '../utils/gradeSelectors';
+import ClassReportPanel from './ClassReportPanel';
 import {subjectAttendance} from '../utils/attendance';
 import GradeComparison from './GradeComparison';
 import {comparedGradeText} from '../utils/studentReport';
@@ -317,6 +318,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
         </div>
       </div>
 
+      {activeSubject&&<ClassReportPanel state={state} subject={activeSubject} period={gradePeriod} method={method}/>}
       {activeSubject ? (
         <>
           {/* Dashboard Summary Widgets (Bento style) */}

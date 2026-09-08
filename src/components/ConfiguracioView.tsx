@@ -2,6 +2,7 @@ import StudentImportReview from './StudentImportReview';
 import StudentName from './StudentName';
 import CurriculumEditor, { CurriculumTarget } from './CurriculumEditor';
 import DetailPage from './DetailPage';
+import TeacherSettings from './TeacherSettings';
 import SubjectGradingSettings, { validateSubjectGrading } from './SubjectGradingSettings';
 import CriteriaLabels from './CriteriaLabels';
 /**
@@ -59,7 +60,7 @@ export default function ConfiguracioView({
   onImportBackup,
   onResetState
 }: ConfiguracioViewProps) {
-  const [activeTab, setActiveTab] = useState<'calendar' | 'subjects' | 'competencies' | 'substitutions' | 'notifications' | 'persistence'>('calendar');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'subjects' | 'competencies' | 'substitutions' | 'notifications' | 'persistence' | 'teacher'>('calendar');
   const [calendarSubTab, setCalendarSubTab] = useState<'limits' | 'hours'>('limits');
 
   // Trigger global state updates
@@ -943,6 +944,7 @@ export default function ConfiguracioView({
     <div id="configuracio-view-root" className="space-y-6">
       {/* Tab Selectors */}
       <div id="config-tabs-header" className="flex overflow-x-auto bg-white border border-slate-200 rounded-2xl p-1.5 gap-1.5 shadow-sm scrollbar-none">
+        <button className={`ds-button shrink-0 ${activeTab==='teacher'?'ds-primary':''}`} onClick={()=>setActiveTab('teacher')}>Perfil Docent / Preavaluació</button>
         <button
           id="tab-btn-calendar"
           onClick={() => setActiveTab('calendar')}
@@ -1030,6 +1032,7 @@ export default function ConfiguracioView({
       {/* ==========================================
           TAB 1 PANEL: CALENDAR & HOLIDAYS & TERMS (Including Nesting of Hours)
           ========================================== */}
+      {activeTab==='teacher'&&<TeacherSettings state={state} onChange={onChangeState}/>}
       {activeTab === 'calendar' && (
         <div className="space-y-6 animate-fadeIn">
           {/* Sub Navigation Bar for Calendar Tab Section */}

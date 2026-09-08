@@ -23,7 +23,7 @@ export function buildStudentReport(state:AppState,studentId:string) {
   });});
   const history=studentSessionHistory(state,studentId);
   const attendance=studentAttendance(state,studentId);
-  return {attendance,name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
+  return {teacher:state.config.teacherProfile,attendance,name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
     totals:{absent:attendance.absent,late:attendance.late,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)}};
 }
 export type StudentReport=ReturnType<typeof buildStudentReport>;
@@ -41,7 +41,7 @@ export function reportSections(report:StudentReport) {
 }
 
 export function annualProposals(state:AppState,subject:import('../types').Subject,studentId:string,method:CalculationMode) {
-  const terms=state.config.terms.map(term=>({term,actual:studentPeriodGrade(state,subject,studentId,term.id,method)?.finalGrade,automatic:studentPeriodGrade(state,subject,studentId,term.id,method,true)?.finalGrade}));
+  const terms=state.config.terms.filter(t=>!t.isPreassessment).map(term=>({term,actual:studentPeriodGrade(state,subject,studentId,term.id,method)?.finalGrade,automatic:studentPeriodGrade(state,subject,studentId,term.id,method,true)?.finalGrade}));
   const available=terms.filter(t=>t.actual?.score!=null);
   const score=available.length?available.reduce((n,t)=>n+t.actual.score,0)/available.length:null;
   return {terms,termScore:score,count:available.length,total:terms.length,fromActivities:studentPeriodGrade(state,subject,studentId,'annual',method,true)?.finalGrade};

@@ -83,6 +83,9 @@ export function getHolidayForDate(dateStr: string, holidays: Holiday[]): Holiday
 
 // Get current term for a given date
 export function getTermForDate(dateStr: string, terms: Term[]): Term | null {
+  const active=terms.filter(t=>dateStr>=t.startDate&&dateStr<=t.endDate);
+  const main=active.find(t=>!t.isPreassessment),pre=active.find(t=>t.isPreassessment);
+  if(main&&pre)return {...main,name:`${pre.name} · ${main.name}`};
   for (const t of terms) {
     if (dateStr >= t.startDate && dateStr <= t.endDate) {
       return t;
@@ -245,4 +248,3 @@ export function getLastDayBeforeDeliveryActivities(
   }
   return result;
 }
-

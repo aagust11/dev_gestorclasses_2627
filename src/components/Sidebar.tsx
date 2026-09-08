@@ -47,7 +47,6 @@ export default function Sidebar({
         </div>
         <div>
           <h1 className="text-sm font-bold tracking-tight text-white leading-tight">Àula</h1>
-          <span className="text-[10px] text-slate-500 font-medium">Diari i seguiment d’aula</span>
         </div>
       </div>
 
