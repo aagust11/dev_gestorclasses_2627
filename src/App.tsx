@@ -1,4 +1,5 @@
-import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport} from './utils/importValidation';
+import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport,inspectImport} from './utils/importValidation';
+import {OrphanItem,removeOrphanData} from './utils/orphanData';
 import {combineSharedState,EditConflict,withSharedWrite} from './utils/sharedEditing';
 import {noticeKey,reviewedNotices,reviewNotice} from './utils/noticePreferences';
 import DataManagement from './components/DataManagement';
@@ -230,14 +231,40 @@ export default function App() {
   const handleExportBackup=()=>triggerJsonDownload(current.current,'docentsuite_dades_curs.json');
   const handleResetCourseState=()=>{if(confirm('Restablir el curs a totes les pestanyes? Es conservarà una còpia recuperable.'))void replaceState(getInitialState(),'Abans de restablir el curs');};
   const openRecovery=()=>{try{setCopies(recoveryCopies());}catch(e){setSaveError(e.message);}};
+  const removeOrphan=async(item:OrphanItem)=>{
+    if(!canEdit||blocked||busy||failed.current)throw Error('Resol primer el desat pendent.');
+    setBusy(true);
+    let committed=false;
+    try{
+      await queue.current;
+      if(failed.current)throw Error('Resol primer el desat pendent.');
+      await withSharedWrite(navigator.locks,async()=>{
+        const remote=latest();
+        const next=removeOrphanData(remote,item);
+        assertValidImport(next);
+        createRecoveryCopy(remote,'Abans d’eliminar una dada desvinculada: '+item.title);
+        saveStateToLocalStorage(next);committed=true;
+        install(next);acknowledged.current=next;
+        setImportIssues(inspectImport(next).issues);setImportError('');setCopies(recoveryCopies());
+        setSaveStatus('saving');
+        await writeLinked(next);
+      });
+      setSaveStatus('saved');setSaveError('');
+    }catch(e){
+      if(committed){fail(e);throw Error('Eliminat al navegador i amb còpia recuperable, però falta desar al fitxer. Resol el desat pendent abans de continuar.');}
+      throw e;
+    }finally{setBusy(false);}
+  };
   const clearCopies=async()=>{
     if(!confirm('Eliminar només les còpies recuperables d’aquest navegador? Les dades actuals es conservaran. Es descarregarà abans un arxiu amb les còpies.'))return;
     try{await withSharedWrite(navigator.locks,async()=>{triggerRawJsonDownload(recoveryRaw(),'copies_recuperables_arxiu.json');removeRecoveryCopies();});setCopies([]);setSaveError('');}catch(e){fail(e);}
   };
+  const liveIssues=React.useMemo(()=>blocked?[]:inspectImport(localState).issues,[localState,blocked]);
   const notices=[
     ...(saveError?[{kind:'save',message:saveError}]:[]),
     ...(editError?[{kind:'edit',message:editError+' '+editIssues.map(i=>i.path+': '+i.message).join(' · ')}]:[]),
-    ...(importError||importIssues.length?[{kind:'import',message:importError+' '+importIssues.map(i=>i.path+': '+i.message).join(' · ')}]:[]),
+    ...(importError?[{kind:'import',message:importError+' '+importIssues.map(i=>i.path+': '+i.message).join(' · ')}]:[]),
+    ...(!importError&&liveIssues.length?[{kind:'import',message:`Hi ha ${liveIssues.length} avisos de dades. Consulta «Revisar dades desvinculades» per veure el contingut i decidir què conserves.\n`+[...new Set(liveIssues.map(i=>i.message))].join('\n')}]:[]),
     ...(availableHandle?[{kind:'file',message:'Fitxer anterior: '+availableHandle.name}]:[])
   ].map(n=>({...n,key:noticeKey(n.kind,n.message)}));
   const review=(key:string)=>{try{setReviewed(reviewNotice(reviewed,key));}catch(e){setSaveError('No s’ha pogut recordar que l’avís està revisat: '+e.message);}};
@@ -296,7 +323,7 @@ export default function App() {
 
         {/* Core Router Body */}
         <main id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
-          {activeView==='dades'?<DataManagement status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
+          {activeView==='dades'?<DataManagement state={localState} onRemoveOrphan={removeOrphan} status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
           {!canEdit&&<p>Mode consulta: el navegador no permet coordinar el desat entre pestanyes.</p>}
           {busy&&<p role="status">Operació de fitxer en curs…</p>}
           {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||saveStatus==='error'}>
