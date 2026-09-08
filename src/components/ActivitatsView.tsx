@@ -195,6 +195,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   };
 
   const handleRemoveResource = (index: number) => {
+    if(!window.confirm('Treure aquest recurs de l’activitat?'))return;
     setResources(resources.filter((_, idx) => idx !== index));
   };
 
@@ -831,7 +832,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                               </div>
 
                               <label className="ds-field">Text per identificar aquest criteri quan avalues<input value={criteriaCustomLabels[cid] ?? cr?.key ?? ''} onChange={e => setCriteriaCustomLabels({...criteriaCustomLabels, [cid]:e.target.value})} placeholder="Ex.: P1-CA1 · Expressió oral" /></label>
-                              <div className="flex gap-2"><button type="button" className="ds-button text-rose-700" onClick={()=>setSelectedCritIds(selectedCritIds.filter(id=>id!==cid))}>Treure de l’activitat</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
+                              <div className="flex gap-2"><button type="button" className="ds-button text-rose-700" onClick={()=>{if(window.confirm('Treure aquest aspecte de l’activitat? Deixarà d’aparèixer a l’avaluació i al càlcul quan desis els canvis.'))setSelectedCritIds(selectedCritIds.filter(id=>id!==cid));}}>Treure de l’activitat</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===0} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i-1],list[i]]=[list[i],list[i-1]];setSelectedCritIds(list);}}>Pujar</button><button type="button" className="ds-button" disabled={selectedCritIds.indexOf(cid)===selectedCritIds.length-1} onClick={()=>{const list=[...selectedCritIds],i=list.indexOf(cid);[list[i+1],list[i]]=[list[i],list[i+1]];setSelectedCritIds(list);}}>Baixar</button></div>
                               <div className="grid grid-cols-3 gap-1.5 items-center">
                                 <div>
                                   <label className="text-[8.5px] font-bold text-slate-400 block uppercase">Pes</label>

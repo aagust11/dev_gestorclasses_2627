@@ -107,6 +107,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
 
   const handleUpdatePlanDimensions = (rows: number, cols: number) => {
     if (!activePlan) return;
+    if(Object.keys(activePlan.seats).some(key=>{const [r,c]=key.split(',').map(Number);return r>=rows||c>=cols;})&&!window.confirm('Reduir el plànol eliminarà els seients que quedin fora. Continuar?'))return;
     
     // Purge any seats outside the next bounds
     const nextSeats = { ...activePlan.seats };
@@ -136,6 +137,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
   };
 
   const handleRemovePlan = (planId: string) => {
+    if(!window.confirm('Eliminar aquesta versió del plànol i la seva distribució de seients? Els alumnes i els altres plànols es conservaran.'))return;
     const nextPlans = state.plans.filter(p => p.id !== planId);
     onChangeState({
       ...state,
@@ -150,6 +152,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
   // Toggling corridor rows/cols
   const handleToggleRowCorridor = (rIdx: number) => {
     if (!activePlan) return;
+    if(Object.keys(activePlan.seats).some(k=>Number(k.split(',')[0])===rIdx)&&!window.confirm('Convertir aquesta fila en passadís i retirar-ne els alumnes asseguts?'))return;
     const currentRows = activePlan.corridorRows || [];
     const nextRows = currentRows.includes(rIdx)
       ? currentRows.filter(r => r !== rIdx)
@@ -175,6 +178,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
 
   const handleToggleColCorridor = (cIdx: number) => {
     if (!activePlan) return;
+    if(Object.keys(activePlan.seats).some(k=>Number(k.split(',')[1])===cIdx)&&!window.confirm('Convertir aquesta columna en passadís i retirar-ne els alumnes asseguts?'))return;
     const currentCols = activePlan.corridorCols || [];
     const nextCols = currentCols.includes(cIdx)
       ? currentCols.filter(c => c !== cIdx)
@@ -250,6 +254,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
     if (editorPlacementMode === 'desk') {
       // Toggle teacher desk to clicked coordinates
       const isCurrentlyDesk = activePlan.teacherDesk?.x === r && activePlan.teacherDesk?.y === c;
+      if((isCurrentlyDesk||activePlan.seats[`${r},${c}`])&&!window.confirm('Eliminar la taula del professor o substituir el seient que ocupa aquesta posició?'))return;
       const nextTeacherDesk = isCurrentlyDesk ? null : { x: r, y: c };
       
       const nextSeats = { ...activePlan.seats };
@@ -274,6 +279,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
 
       if (selectedStudentToPlaceId) {
         // Seat highlighted student
+        if(nextSeats[cellKey]&&nextSeats[cellKey]!==selectedStudentToPlaceId&&!window.confirm('Substituir l’alumne assegut en aquesta posició?'))return;
         Object.keys(nextSeats).forEach(key => {
           if (nextSeats[key] === selectedStudentToPlaceId) {
             delete nextSeats[key];
@@ -783,6 +789,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                       type="button"
                                       onClick={() => {
                                         const nextSeats = { ...activePlan.seats };
+                                        if(!window.confirm('Retirar l’alumne d’aquest seient?'))return;
                                         delete nextSeats[cellKey];
                                         const nextPlans = state.plans.map(p =>
                                           p.id === activePlan.id ? { ...p, seats: nextSeats } : p
@@ -871,6 +878,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         const nextSeats = { ...activePlan.seats };
+                                        if(!window.confirm('Retirar l’alumne d’aquest seient?'))return;
                                         delete nextSeats[cellKey];
                                         const nextPlans = state.plans.map(p =>
                                           p.id === activePlan.id ? { ...p, seats: nextSeats } : p

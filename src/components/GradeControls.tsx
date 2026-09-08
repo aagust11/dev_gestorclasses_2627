@@ -14,7 +14,7 @@ export function GradeButtons({value,onChange,label,descriptions}:{value?:string;
       title={descriptions?.[q] ? `${q}: ${descriptions[q]}` : `${q}: sense descripció configurada`}
       aria-pressed={value===q}
       aria-label={`${label}: ${q}${descriptions?.[q] ? '. '+descriptions[q] : ''}`}
-      onClick={()=>onChange(q)}
+      onClick={()=>{if(value===q&&!window.confirm(`Esborrar la qualificació ${q} de ${label}?`))return;onChange(q);}}
       className={`grade-choice ${value===q?QUAL_COLORS[q].bg+' '+QUAL_COLORS[q].text:QUAL_COLORS[q].badge}`}>{q}</button>)}
   </div>;
 }

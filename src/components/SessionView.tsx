@@ -230,6 +230,7 @@ export default function SessionView({
   };
 
   const handleDeleteComment = (studentId: string, key: 'pos' | 'regular' | 'incident', indexToDelete: number) => {
+    if(!window.confirm('Eliminar aquest comentari individual de la sessió?'))return;
     updateStudentLog(studentId, (prev) => {
       const fieldList = key === 'pos' 
         ? 'posComments' 
@@ -332,6 +333,7 @@ export default function SessionView({
   };
 
   const handleRemoveGeneralNote = (index: number) => {
+    if(!window.confirm('Eliminar aquesta nota general de l’assignatura?'))return;
     if (!onChangeState || !subject) return;
     const currentNotes = subject.generalNotes || [];
     const updatedNotes = currentNotes.filter((_, idx) => idx !== index);
@@ -354,6 +356,7 @@ export default function SessionView({
   };
 
   const handleRemoveGeneralLink = (linkId: string) => {
+    if(!window.confirm('Eliminar aquest enllaç de l’assignatura?'))return;
     if (!onChangeState || !subject) return;
     const currentLinks = subject.generalLinks || [];
     const updatedLinks = currentLinks.filter(l => l.id !== linkId);

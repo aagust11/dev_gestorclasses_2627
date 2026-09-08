@@ -163,6 +163,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveSubstitution = (subId: string) => {
+    if(!window.confirm('Eliminar aquesta substitució? L’horari tornarà a aplicar la programació habitual.'))return;
     const nextSubstitutions = (state.config.substitutions || []).filter(s => s.id !== subId);
     updateConfigState(draft => {
       draft.substitutions = nextSubstitutions;
@@ -204,6 +205,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveHoliday = (date: string) => {
+    if(!window.confirm(`Eliminar el festiu del ${date}? Es tornarà a considerar dia lectiu segons l’horari.`))return;
     const nextHolidays = state.config.holidays.filter(h => h.date !== date);
     updateConfigState((draft) => {
       draft.holidays = nextHolidays;
@@ -241,6 +243,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveTimeSlot = (slotId: string) => {
+    if(!window.confirm(`Eliminar la franja «${state.config.timeSlots.find(s=>s.id===slotId)?.name}» i les seves entrades d’horari? Les sessions del diari es conservaran, però quedaran desvinculades.`))return;
     // Delete slot
     const nextTimeSlots = state.config.timeSlots.filter(ts => ts.id !== slotId);
     // Remove all associated schedule links to prevent ghosts
@@ -418,6 +421,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveSubject = (id: string) => {
+    if(!window.confirm(`Eliminar l’assignatura «${state.subjects.find(s=>s.id===id)?.name}»? S’eliminaran la seva configuració, les entrades d’horari, les competències i els criteris propis. Les activitats i sessions històriques es conservaran desvinculades. Els alumnes es mantindran al catàleg. Vols continuar?`))return;
     // Delete subject
     const nextSubjects = state.subjects.filter(s => s.id !== id);
     // Unlink calendar slots assigned to this subject
@@ -454,6 +458,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveStudentFromSubject = (subjectId: string, studentId: string) => {
+    if(!window.confirm('Donar de baixa aquest alumne de l’assignatura? La fitxa i l’històric es conservaran.'))return;
     const updatedSubjects = state.subjects.map(s => {
       if (s.id === subjectId) {
         const nextStudents = s.students.filter(stud => stud.id !== studentId);
@@ -561,6 +566,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveCompetency = (compId: string) => {
+    if(!window.confirm(`Eliminar la competència «${state.competencies.find(c=>c.id===compId)?.key}» i tots els seus criteris? Les referències històriques es conservaran, però els càlculs automàtics poden canviar.`))return;
     onChangeState({
       ...state,
       competencies: state.competencies.filter(c => c.id !== compId),
@@ -623,6 +629,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveCriterion = (critId: string) => {
+    if(!window.confirm(`Eliminar el criteri «${state.criteria.find(c=>c.id===critId)?.key}»? Les activitats conservaran la referència històrica i les puntuacions, però els càlculs automàtics poden canviar.`))return;
     onChangeState({
       ...state,
       criteria: state.criteria.filter(cr => cr.id !== critId)
@@ -2067,6 +2074,7 @@ export default function ConfiguracioView({
                         {/* Remove */}
                         <button
                           onClick={() => {
+                            if(!window.confirm(`Eliminar el recordatori «${rem.title}»?`))return;
                             const nextRems = (state.config.reminders ?? []).filter(r => r.id !== rem.id);
                             updateConfigState(draft => { draft.reminders = nextRems; });
                           }}
