@@ -42,6 +42,14 @@ async function handleTransaction(mode:IDBTransactionMode,operation:(store:IDBObj
 export async function setFileHandle(handle:any):Promise<void>{await handleTransaction('readwrite',s=>s.put(handle,HANDLE_KEY));}
 export async function getFileHandle():Promise<any>{return handleTransaction('readonly',s=>s.get(HANDLE_KEY));}
 export async function removeFileHandle():Promise<void>{await handleTransaction('readwrite',s=>s.delete(HANDLE_KEY));}
+// The baseline belongs to a particular file, and is shared by all tabs on this device.
+export async function getFileSyncBase(handle:any):Promise<AppState|null>{
+  const saved=await handleTransaction('readonly',s=>s.get('file_sync_base'));
+  return saved?.handle&&await handle.isSameEntry(saved.handle)?normalizeState(saved.state):null;
+}
+export async function setFileSyncBase(handle:any,state:AppState):Promise<void>{
+  await handleTransaction('readwrite',s=>s.put({handle,state},'file_sync_base'));
+}
 
 // Check permission for FileSystemFileHandle
 export async function verifyPermission(fileHandle: any, readWrite = true): Promise<boolean> {
@@ -67,11 +75,11 @@ export async function loadFromFileHandle(fileHandle:any):Promise<AppState> {
 // Serialize snapshots at enqueue time. A rejected write must not poison the queue.
 let writeTail:Promise<unknown>=Promise.resolve();
 export function waitForFileWrites(){return writeTail;}
-export function saveToFileHandle(fileHandle:any,state:AppState,guard:()=>void=()=>{}):Promise<boolean> {
+export function saveToFileHandle(fileHandle:any,state:AppState,guard:()=>void|Promise<void>=()=>{}):Promise<boolean> {
   const contents=JSON.stringify(state,null,2);
   const result=writeTail.then(async()=>{
     let writable:any;
-    try {guard();writable=await fileHandle.createWritable();guard();await writable.write(contents);guard();await writable.close();return true;}
+    try {const ready=guard();if(ready)await ready;writable=await fileHandle.createWritable();await guard();await writable.write(contents);await guard();await writable.close();return true;}
     catch(error){try{await writable?.abort();}catch{} throw error;}
   });
   writeTail=result.catch(()=>{});return result;

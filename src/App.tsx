@@ -1,7 +1,9 @@
 import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport,inspectImport} from './utils/importValidation';
 import {OrphanItem,removeOrphanData} from './utils/orphanData';
 import {prepareStudentDeletion} from './utils/deleteStudent';
-import {combineSharedState,EditConflict,withSharedWrite} from './utils/sharedEditing';
+import {combineSharedState,EditConflict,withSharedWrite,equal} from './utils/sharedEditing';
+import {FILE_POLL_MS,synchronizeFile,readFileSnapshot} from './utils/fileSync';
+import {getFileSyncBase,setFileSyncBase} from './storage';
 import {noticeKey,reviewedNotices,reviewNotice} from './utils/noticePreferences';
 import DataManagement from './components/DataManagement';
 import {SHARED_STATE_KEY,FILE_LINK_KEY,recoveryRaw,removeRecoveryCopies,normalizeState} from './storage';
@@ -65,6 +67,9 @@ export default function App() {
   // File System Access states
   const [linkedFileHandle, setLinkedFileHandle] = useState<any>(null);
   const [linkedFileName, setLinkedFileName] = useState<string | null>(null);
+  const [lastFileCheck,setLastFileCheck]=useState<string|null>(null);
+  const [fileReady,setFileReady]=useState(false);
+  const checkingFile=useRef(false);
 
   // File Input Ref for traditional fallback uplinks
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -101,12 +106,18 @@ export default function App() {
     if(localStorage.getItem(FILE_LINK_KEY)==='yes'&&handle){setLinkedFileHandle(handle);setLinkedFileName(handle.name);setAvailableHandle(null);}
     else {setLinkedFileHandle(null);setLinkedFileName(null);setAvailableHandle(handle||null);}
   };
-  const writeLinked=async(state:AppState)=>{
+  const writeLinked=async(state:AppState,preferLocal=false)=>{
     if(localStorage.getItem(FILE_LINK_KEY)!=='yes')return;
     const handle=await getFileHandle();
     if(!handle)throw Error('No es troba el fitxer enllaçat. Torna’l a seleccionar o oblida l’enllaç.');
     if(await handle.queryPermission({mode:'readwrite'})!=='granted')throw Error('Cal renovar el permís del fitxer. Prem «Renovar permís» o continua només al navegador.');
-    await saveToFileHandle(handle,state);
+    const base=await getFileSyncBase(handle);
+    await synchronizeFile(handle,state,base,{
+      preferLocal,
+      backup:(s,reason)=>{createRecoveryCopy(s,reason);},
+      commit:async merged=>{if(!equal(merged,latest()))saveStateToLocalStorage(merged);if(!equal(base,merged))await setFileSyncBase(handle,merged);}
+    });
+    setLastFileCheck(new Date().toISOString());
   };
   const roster=(s:AppState)=>JSON.stringify(s.subjects.map(x=>[x.id,x.students.map(st=>st.id)]));
   const saveChange=(base:AppState,next:AppState,preferLocal=false)=>{
@@ -123,7 +134,7 @@ export default function App() {
         localCommitted=true;
         acknowledged.current=next;
         // Every tab writes the same shared target while holding the transaction lock.
-        await writeLinked(merged);
+        await writeLinked(merged,preferLocal);
       });
     }).catch(e=>{if(!localCommitted)acknowledged.current=base;fail(e);}).finally(()=>{
       pending.current--;
@@ -144,12 +155,33 @@ export default function App() {
     window.addEventListener('storage',changed);
     return()=>{mounted=false;window.removeEventListener('storage',changed);};
   },[]);
+  const checkFile=async()=>{
+    if(checkingFile.current||pending.current||failed.current||busy||blocked||!canEdit)return;
+    checkingFile.current=true;
+    try{
+      await withSharedWrite(navigator.locks,async()=>{
+        // An edit may have been queued while this check waited for another tab.
+        if(pending.current||failed.current)return;
+        await writeLinked(latest());
+        if(!pending.current){const state=latest();if(!equal(state,current.current))install(state);acknowledged.current=state;}
+      });
+    }catch(e){fail(e);}finally{checkingFile.current=false;setFileReady(true);}
+  };
+  const checkFileRef=useRef(checkFile);checkFileRef.current=checkFile;
+  useEffect(()=>{
+    if(!canEdit)return;
+    void checkFileRef.current();
+    const check=()=>{if(document.visibilityState==='visible')void checkFileRef.current();};
+    const timer=window.setInterval(check,FILE_POLL_MS);
+    window.addEventListener('focus',check);window.addEventListener('online',check);document.addEventListener('visibilitychange',check);
+    return()=>{clearInterval(timer);window.removeEventListener('focus',check);window.removeEventListener('online',check);document.removeEventListener('visibilitychange',check);};
+  },[canEdit]);
   useEffect(()=>{
     const guard=(e:BeforeUnloadEvent)=>{if(saveStatus!=='saved'){e.preventDefault();e.returnValue='';}};
     window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);
   },[saveStatus]);
   const triggerStateUpdate=(next:AppState,draftBase?:AppState)=>{
-    if(blocked||busy||!canEdit||failed.current)return false;
+    if(blocked||busy||!canEdit||!fileReady||failed.current)return false;
     try{assertValidImport(next);}catch(e){setEditError('Canvi no desat: corregeix els camps indicats.');setEditIssues(e instanceof ImportValidationError?e.report.issues:[]);return false;}
     setEditError('');setEditIssues([]);
     const base=draftBase||current.current,normalized=syncStudentRegistry(next);
@@ -191,25 +223,29 @@ export default function App() {
     }catch(e){fail(e);}finally{setBusy(false);}
   };
   const connect=async(handle:any,keepCurrent=false)=>{
-    if(!canEdit||failed.current)return;
+    if(!canEdit||!handle)return;
     const base=current.current,rawBase=readStoredRaw();setBusy(true);
     try{
       if(!await verifyPermission(handle,true))throw Error('No hi ha permís per escriure al fitxer.');
-      const loaded=approveImport(await readImportFile(await handle.getFile()));if(!loaded)return;
+      const snapshot=await readFileSnapshot(handle);
+      const loaded=approveImport(snapshot.state);if(!loaded)return;
       if(!confirm(keepCurrent?'Enllaçar el fitxer conservant les dades compartides? Es copiarà el contingut anterior del fitxer.':'Carregar el fitxer a totes les pestanyes? Es conservarà la versió compartida actual.'))return;
-      await queue.current;if(failed.current)return;
+      await queue.current;
       await withSharedWrite(navigator.locks,async()=>{
         const remote=blocked?base:latest();
         if(blocked&&readStoredRaw()!==rawBase)throw new EditConflict(['La còpia compartida ha canviat mentre es preparava l’enllaç.']);
         if(!blocked&&!keepCurrent)combineSharedState(base,loaded,remote,true);
+        if(await (await handle.getFile()).text()!==snapshot.raw)throw Error('El fitxer ha canviat mentre confirmaves l’enllaç. Torna a seleccionar-lo.');
+        createRecoveryCopy(current.current,'Pestanya abans d’enllaçar');
         createRecoveryCopy(loaded,'Fitxer abans d’enllaçar');
         if(!blocked)createRecoveryCopy(remote,'Dades abans d’enllaçar');
         const state=keepCurrent?remote:{...loaded,workspaceGeneration:crypto.randomUUID()};
         assertValidImport(state);
         await setFileHandle(handle);localStorage.setItem(FILE_LINK_KEY,'yes');
+        await setFileSyncBase(handle,loaded);
         saveStateToLocalStorage(state);install(state);acknowledged.current=state;setBlocked(false);await writeLinked(state);
       });
-      await refreshFile();setSaveError('');setSaveStatus('saved');
+      await refreshFile();failed.current=false;setConflicts([]);setFileReady(true);setSaveError('');setSaveStatus('saved');
     }catch(e){if(e instanceof ImportValidationError)importFailed(e);else fail(e);}finally{setBusy(false);}
   };
   const handleRegisterFileHandle=async()=>{
@@ -344,10 +380,12 @@ export default function App() {
 
         {/* Core Router Body */}
         <main id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
-          {activeView==='dades'?<DataManagement state={localState} onRemoveOrphan={removeOrphan} status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
+          {activeView==='dades'?<DataManagement lastFileCheck={lastFileCheck} onCheckFile={()=>void checkFile()} onLoadLinked={()=>void connect(linkedFileHandle)} onDownloadLinked={async()=>{try{const h=await getFileHandle();if(h)triggerRawJsonDownload(await (await h.getFile()).text(),"fitxer_abans_de_resoldre.json");}catch(e){fail(e);}}} state={localState} onRemoveOrphan={removeOrphan} status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
           {!canEdit&&<p>Mode consulta: el navegador no permet coordinar el desat entre pestanyes.</p>}
           {busy&&<p role="status">Operació de fitxer en curs…</p>}
-          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||saveStatus==='error'}>
+          {!fileReady&&canEdit&&saveStatus!=='error'&&<p role="status">Comprovant les dades del fitxer abans d’editar…</p>}
+          {saveStatus==='error'&&<button className="ds-button text-rose-700" onClick={()=>setActiveView('dades')}>Desat pendent: obrir Dades i desat per resoldre’l</button>}
+          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||!fileReady||saveStatus==='error'}>
           {activeView === 'horari' && (
             <HorariView 
               state={localState}

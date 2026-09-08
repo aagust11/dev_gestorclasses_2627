@@ -1,14 +1,14 @@
 import {AppState} from '../types';
 import {recordKey} from './termRecords';
 
-const equal=(a:any,b:any):boolean=>{
+export const equal=(a:any,b:any):boolean=>{
   if(a===b)return true;
   if(!a||!b||typeof a!=='object'||typeof b!=='object')return false;
   if(Array.isArray(a)!==Array.isArray(b))return false;
   const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>Object.hasOwn(b,k)&&equal(a[k],b[k]));
 };
 export class EditConflict extends Error {
-  constructor(public paths:string[]){super('Dues pestanyes han modificat les mateixes dades. Cal escollir quins canvis es conserven.');}
+  constructor(public paths:string[]){super('Hi ha versions amb canvis incompatibles. Cal escollir quins canvis es conserven.');}
 }
 /** Three-way merge: equal changes converge, unrelated changes survive; deletion vs edit conflicts. */
 export function mergeEdits(base:AppState,local:AppState,remote:AppState,preferLocal=false):AppState {
