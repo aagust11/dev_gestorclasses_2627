@@ -1,5 +1,6 @@
 import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport,inspectImport} from './utils/importValidation';
 import {OrphanItem,removeOrphanData} from './utils/orphanData';
+import {prepareStudentDeletion} from './utils/deleteStudent';
 import {combineSharedState,EditConflict,withSharedWrite} from './utils/sharedEditing';
 import {noticeKey,reviewedNotices,reviewNotice} from './utils/noticePreferences';
 import DataManagement from './components/DataManagement';
@@ -231,6 +232,26 @@ export default function App() {
   const handleExportBackup=()=>triggerJsonDownload(current.current,'docentsuite_dades_curs.json');
   const handleResetCourseState=()=>{if(confirm('Restablir el curs a totes les pestanyes? Es conservarà una còpia recuperable.'))void replaceState(getInitialState(),'Abans de restablir el curs');};
   const openRecovery=()=>{try{setCopies(recoveryCopies());}catch(e){setSaveError(e.message);}};
+  const removeStudent=async(id:string,name:string,reviewedState:AppState)=>{
+    if(!canEdit||blocked||busy||failed.current)throw Error('Resol primer el desat pendent.');
+    setBusy(true);let committed=false;
+    try{
+      await queue.current;
+      if(failed.current)throw Error('Resol primer el desat pendent.');
+      await withSharedWrite(navigator.locks,async()=>{
+        const remote=latest();
+        const next=prepareStudentDeletion(remote,reviewedState,id,name);
+        assertValidImport(next);
+        createRecoveryCopy(remote,'Abans d’eliminar l’alumne '+name);
+        saveStateToLocalStorage(next);committed=true;
+        install(next);acknowledged.current=next;setStudentId(null);
+        setImportIssues(inspectImport(next).issues);setImportError('');setCopies(recoveryCopies());
+        setSaveStatus('saving');await writeLinked(next);
+      });
+      setSaveStatus('saved');setSaveError('');
+    }catch(e){if(committed){fail(e);setActiveView('dades');}throw e;}
+    finally{setBusy(false);}
+  };
   const removeOrphan=async(item:OrphanItem)=>{
     if(!canEdit||blocked||busy||failed.current)throw Error('Resol primer el desat pendent.');
     setBusy(true);
@@ -336,7 +357,7 @@ export default function App() {
             />
           )}
 
-          {activeView === 'alumnat' && <StudentsView state={localState} onChange={triggerStateUpdate} selectedId={studentId} onSelect={setStudentId} onSession={handleSelectSessionFromGrid}/>}
+          {activeView === 'alumnat' && <StudentsView state={localState} onChange={triggerStateUpdate} selectedId={studentId} onSelect={setStudentId} onSession={handleSelectSessionFromGrid} onDelete={removeStudent}/>}
           {activeView === 'classes' && (
             <ClassesView 
               onOpenStudent={openStudent}

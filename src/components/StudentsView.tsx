@@ -1,3 +1,4 @@
+import DeleteStudentControl,{DeleteStudentAction} from './DeleteStudentControl';
 import {IdentityMerge} from './IdentityReview';
 import {studentSubjects,withdrawStudent} from '../utils/studentEnrolment';
 import {studentAttendance,attendanceLabels} from '../utils/attendance';
@@ -17,17 +18,17 @@ const methodNames={mean:'Mitjana',median:'Mediana',mode:'Moda'};
 const attendanceNames=attendanceLabels;
 const normalize=(value:string)=>value.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
 
-export default function StudentsView({state,onChange,selectedId,onSelect,onSession}:{state:AppState;onChange:(s:AppState)=>void;selectedId:string|null;onSelect:(id:string|null)=>void;onSession:(slot:string,date:string)=>void}) {
+export default function StudentsView({state,onChange,selectedId,onSelect,onSession,onDelete}:{state:AppState;onChange:(s:AppState)=>void;selectedId:string|null;onSelect:(id:string|null)=>void;onSession:(slot:string,date:string)=>void;onDelete?:DeleteStudentAction}) {
   const [search,setSearch]=useState('');
   const [group,setGroup]=useState('all');
   const students=Object.values(state.studentRegistry||Object.fromEntries(state.subjects.flatMap(s=>s.students).map(st=>[st.id,st]))).sort((a,b)=>a.name.localeCompare(b.name,'ca'));
   const student=students.find(s=>s.id===selectedId);
-  if(student)return <StudentPage key={student.id} state={state} student={student} onChange={onChange} onBack={()=>onSelect(null)} onSession={onSession}/>;
+  if(student)return <StudentPage key={student.id} state={state} student={student} onChange={onChange} onBack={()=>onSelect(null)} onSession={onSession} onDelete={onDelete}/>;
   const visible=students.filter(st=>normalize(st.name).includes(normalize(search.trim()))&&(group==='all'||state.subjects.find(s=>s.id===group)?.students.some(s=>s.id===st.id)));
   return <section className="space-y-4"><header className="page-heading"><h2 className="text-xl font-bold">Alumnat</h2><span className="text-sm text-slate-500">{visible.length} alumnes</span></header><div className="ds-panel flex flex-wrap gap-3"><label className="ds-field flex-1">Cercar alumne<div className="flex items-center gap-2"><Search size={18}/><input className="w-full" type="search" placeholder="Nom o cognoms…" value={search} onChange={e=>setSearch(e.target.value)}/></div></label><label className="ds-field">Grup / assignatura<select value={group} onChange={e=>setGroup(e.target.value)}><option value="all">Tots</option>{state.subjects.filter(s=>!s.isGeneral).map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label></div><IdentityMerge state={state} onChange={onChange}/><div className="grade-table-wrap"><table className="grade-table"><thead><tr><th>Alumne/a</th><th>Grups i assignatures</th><th/></tr></thead><tbody>{visible.map(st=><tr key={st.id}><td><button className="font-semibold text-blue-800" onClick={()=>onSelect(st.id)}><StudentName state={state} student={st}/></button></td><td>{state.subjects.filter(s=>s.students.some(x=>x.id===st.id)).map(s=>s.name).join(' · ')}</td><td><button className="ds-button" onClick={()=>onSelect(st.id)}>Obrir fitxa</button></td></tr>)}</tbody></table>{!visible.length&&<p className="p-4 text-slate-500">No hi ha alumnes per mostrar.</p>}</div></section>;
 }
 
-function StudentPage({state,student,onChange,onBack,onSession}:{state:AppState;student:{id:string;name:string};onChange:(s:AppState)=>void;onBack:()=>void;onSession:(slot:string,date:string)=>void}) {
+function StudentPage({state,student,onChange,onBack,onSession,onDelete}:{state:AppState;student:{id:string;name:string};onChange:(s:AppState)=>void;onBack:()=>void;onSession:(slot:string,date:string)=>void;onDelete?:DeleteStudentAction}) {
   const [psiVisible,setPsiVisible]=useState(false);
   const [exporting,setExporting]=useState(false);
   const [exportError,setExportError]=useState('');
@@ -51,6 +52,7 @@ function StudentPage({state,student,onChange,onBack,onSession}:{state:AppState;s
   const totals={absent:attendance.absent,late:attendance.late,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)};
   return <DetailPage title={<StudentName state={state} student={student}/>} subtitle={activeSubjects.map(s=>s.name).join(' · ')} onBack={onBack} actions={<><button className="ds-button" disabled={exporting} onClick={()=>exportReport('word')}>Informe Word</button><button className="ds-button" disabled={exporting} onClick={()=>exportReport('pdf')}>Informe PDF</button></>}>
     <div className="space-y-4">
+      {onDelete&&<DeleteStudentControl state={state} student={student} onDelete={onDelete}/>}
       <section className="ds-panel space-y-2"><h3 className="font-bold">Matrícules actives</h3><p className="text-sm text-slate-600">La baixa afecta només l’assignatura escollida. L’històric es conserva a la fitxa, encara que l’alumne ja no tingui cap matrícula activa.</p>{activeSubjects.map(s=><div key={s.id} className="flex justify-between items-center gap-3 border-t py-2"><span>{s.name}</span><button className="ds-button text-rose-700" onClick={()=>withdraw(s.id)}>Donar de baixa d’aquesta assignatura</button></div>)}{!activeSubjects.length&&<p>Sense matrícules actives.</p>}{subjects.filter(s=>!activeSubjects.some(a=>a.id===s.id)).map(s=><p key={s.id} className="text-sm text-slate-500">{s.name} · Històric, sense matrícula activa</p>)}{enrolmentMessage&&<p role="status" className="text-sm">{enrolmentMessage}</p>}</section>
       {exportError&&<p role="alert" className="text-rose-700">{exportError}</p>}
       <section className="ds-panel space-y-3"><h3 className="font-bold mb-2">Informació de l’alumne</h3><p className="text-sm text-slate-600 mb-2">{activeSubjects.length} grups / assignatures actives</p><label className="ds-field">Informació complementària<textarea rows={2} placeholder="Informació útil per al seguiment de l’alumne…" value={profile.notes||''} onChange={e=>saveProfile({notes:e.target.value})}/></label><label className="ds-field">Comentaris addicionals<textarea rows={3} value={profile.additionalComments||''} onChange={e=>saveProfile({additionalComments:e.target.value})} placeholder="Comentaris addicionals per a l’informe de l’alumne…"/></label></section>
