@@ -65,11 +65,11 @@ export async function loadFromFileHandle(fileHandle:any):Promise<AppState> {
 // Serialize snapshots at enqueue time. A rejected write must not poison the queue.
 let writeTail:Promise<unknown>=Promise.resolve();
 export function waitForFileWrites(){return writeTail;}
-export function saveToFileHandle(fileHandle:any,state:AppState):Promise<boolean> {
+export function saveToFileHandle(fileHandle:any,state:AppState,guard:()=>void=()=>{}):Promise<boolean> {
   const contents=JSON.stringify(state,null,2);
   const result=writeTail.then(async()=>{
     let writable:any;
-    try {writable=await fileHandle.createWritable();await writable.write(contents);await writable.close();return true;}
+    try {guard();writable=await fileHandle.createWritable();guard();await writable.write(contents);guard();await writable.close();return true;}
     catch(error){try{await writable?.abort();}catch{} throw error;}
   });
   writeTail=result.catch(()=>{});return result;

@@ -1,4 +1,5 @@
 import {periodGrades} from '../utils/gradeSelectors';
+import {findTermRecord,putTermRecord} from '../utils/termRecords';
 import StudentName from './StudentName';
 import {annualProposals} from '../utils/studentReport';
 import GradeComparison from './GradeComparison';
@@ -37,7 +38,7 @@ export default function QualificacionsView({state,onChangeState}:{state:AppState
   const criteria=state.criteria.filter(c=>competencies.some(x=>x.id===c.competencyId)).sort((a,b)=>identifierOrder.compare(a.key,b.key));
   const students=subject.students.filter(st=>st.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
   const recordId=(m:CalculationMode)=>`${subject.id}_${periodId}_${m}`;
-  const record=(m:CalculationMode)=>(state.termGradesRecords||[]).find(r=>r.id===recordId(m)) || (m==='mean'?(state.termGradesRecords||[]).find(r=>r.id===`${subject.id}_${periodId}`):undefined);
+  const record=(m:CalculationMode)=>findTermRecord(state.termGradesRecords,subject.id,periodId,m);
   const calculate=(m:CalculationMode,existing?:Record<string,TermStudentGrades>)=>calculateSubjectMode(subject,activities,competencies,criteria,existing,m);
   const all=Object.fromEntries(METHODS.map(m=>[m,periodGrades(state,subject,periodId,m)])) as Record<CalculationMode,Record<string,TermStudentGrades>>;
   const data=all[method];
@@ -52,7 +53,7 @@ export default function QualificacionsView({state,onChangeState}:{state:AppState
   ]);
   columns.push({id:'final',label:'Nota final',type:'final'});
   const cell=(st:TermStudentGrades|undefined,col:Column)=>col.type==='criterion'?st?.criteria?.[col.id]:col.type==='competency'?st?.competencies?.[col.id]:col.type==='item'?st?.items?.[col.id]:st?.finalGrade;
-  const save=(grades:Record<string,TermStudentGrades>,cleared=false)=>onChangeState({...state,termGradesRecords:[...(state.termGradesRecords||[]).filter(r=>r.id!==recordId(method)),{id:recordId(method),subjectId:subject.id,periodId,calculationMode:method,students:grades,cleared}]});
+  const save=(grades:Record<string,TermStudentGrades>,cleared=false)=>onChangeState({...state,termGradesRecords:putTermRecord(state.termGradesRecords,{id:recordId(method),subjectId:subject.id,periodId,calculationMode:method,students:grades,cleared})});
   const recalcColumn=(col:Column)=>{
     const next=structuredClone(data);
     Object.values(next).forEach(st=>{const c=cell(st,col);if(c)c.isManual=false;});

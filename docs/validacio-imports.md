@@ -1,6 +1,6 @@
 # Validació d’importacions
 
-La mateixa validació s’aplica a JSON importats, fitxers enllaçats, restauracions i dades del navegador. Es valida abans de normalitzar, copiar, instal·lar o desar l’estat entrant. Un error no substitueix l’estat actual ni modifica el fitxer d’origen. Un error d’importació es mostra separat de l’estat de desat.
+La mateixa validació s’aplica a JSON importats, fitxers enllaçats, restauracions, dades del navegador i canvis confirmats des dels formularis. Es valida abans de normalitzar, copiar, instal·lar o desar l’estat entrant. Un error no substitueix l’estat actual ni modifica el fitxer d’origen. Els errors dels formularis es mostren com a canvis rebutjats; no es confonen amb un error de disc.
 
 ## Errors que bloquegen
 
@@ -22,6 +22,6 @@ En carregar la còpia del navegador, els avisos es mostren sense exigir una conf
 
 Es conserven els camps addicionals desconeguts que no contenen claus reservades. Els camps opcionals antics reben valors neutres (llistes i comentaris buits, assistència pendent). Les col·leccions absents de competències, criteris, activitats, sessions i plànols no s’omplen amb dades d’exemple. Els paràmetres de calendari absents mantenen els valors de configuració inicial compatibles amb versions anteriors.
 
-No s’afegeixen dependències. Els índexs de referències es construeixen una vegada per validació; el conjunt de dades no es torna a validar mentre s’escriuen notes o comentaris. Es mostren com a màxim 100 incidències, amb prioritat per als errors.
+No s’afegeixen dependències. Els índexs de referències es construeixen una vegada per validació. Es valida cada actualització confirmada a l’estat, inclosos els camps amb desat automàtic; els esborranys locals dels editors no s’avaluen fins a confirmar-los. Es mostren com a màxim 100 incidències, amb prioritat per als errors.
 
 La validació comprova estructura i coherència tècnica. No pot determinar si una nota realment correspon a l’alumne correcte ni recuperar dades ja sobreescrites.

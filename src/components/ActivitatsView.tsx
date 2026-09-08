@@ -50,7 +50,7 @@ import {
 
 interface ActivitatsViewProps {
   state: AppState;
-  onChangeState: (nextState: AppState) => void;
+  onChangeState: (nextState: AppState) => boolean | void;
 }
 
 export default function ActivitatsView({ state, onChangeState }: ActivitatsViewProps) {
@@ -353,10 +353,10 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       });
     }
 
-    onChangeState({
+    if(onChangeState({
       ...state,
       activities: updatedActs
-    });
+    })===false)return;
 
     resetForm();
   };

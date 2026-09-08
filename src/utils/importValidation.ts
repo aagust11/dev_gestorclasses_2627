@@ -1,4 +1,5 @@
-/** Validation runs at data entry boundaries, never while typing grades/comments. */
+import {recordKey,recordMethod} from './termRecords';
+/** Shared validation at import and edit commit boundaries. */
 export type ImportIssue={path:string;message:string;severity:'error'|'warning'};
 export type ImportReport={issues:ImportIssue[];valid:boolean};
 type Check=(value:any,path:string,issue:(path:string,message:string)=>void)=>void;
@@ -45,6 +46,13 @@ export function inspectImport(value:unknown):ImportReport {
   const arrays=['subjects','schedule','competencies','criteria','activities','sessionLogs','plans','termGradesRecords'];
   const unique=(rows:any[],path:string)=>{const seen=new Set();rows.forEach((r,i)=>{if(seen.has(r.id))error(`${path}[${i+1}].id`,'Identificador duplicat dins la mateixa llista.');seen.add(r.id);});};
   arrays.forEach(k=>unique(d[k]||[],k));
+  const recordKeys=new Set<string>();
+  for(const [i,r]of (d.termGradesRecords||[]).entries()){
+    const key=recordKey(r);
+    if(recordKeys.has(key))error(`termGradesRecords[${i+1}]`,'Hi ha dues notes per a la mateixa assignatura, període i mètode. Cal revisar-les; no se’n descartarà cap automàticament.');
+    recordKeys.add(key);
+    for(const m of ['mean','median','mode'])if(r.id===`${r.subjectId}_${r.periodId}_${m}`&&recordMethod(r)!==m)error(`termGradesRecords[${i+1}].calculationMode`,'El mètode contradiu l’identificador antic del registre.');
+  }
   for(const k of ['terms','timeSlots','substitutions','reminders'])unique(d.config[k]||[],`config.${k}`);
   const subjects=new Map<string,any>(d.subjects.map((s:any)=>[s.id,s]));
   const comps=new Map<string,any>((d.competencies||[]).map((c:any)=>[c.id,c]));

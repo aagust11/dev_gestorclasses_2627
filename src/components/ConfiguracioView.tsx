@@ -39,7 +39,7 @@ import { AppState, Holiday, Term, TimeSlot, Subject, Student, Competency, EvalCr
 interface ConfiguracioViewProps {
   initialSubjectId?: string | null;
   state: AppState;
-  onChangeState: (nextState: AppState) => void;
+  onChangeState: (nextState: AppState) => boolean | void;
   linkedFileName: string | null;
   onSelectFile: () => void;
   onDisconnectFile: () => void;
@@ -355,7 +355,7 @@ export default function ConfiguracioView({
     const gradingError = !editIsGeneral && validateSubjectGrading(editingSubject);
     if (gradingError) { alert(gradingError); return; }
 
-    onChangeState({
+    if(onChangeState({
       ...state,
       subjects: state.subjects.map(s => {
         if (s.id === editingSubject.id) {
@@ -374,7 +374,7 @@ export default function ConfiguracioView({
         }
         return s;
       })
-    });
+    })===false)return;
 
     setEditingSubject(null);
   };
