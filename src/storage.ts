@@ -41,7 +41,7 @@ async function handleTransaction(mode:IDBTransactionMode,operation:(store:IDBObj
 }
 export async function setFileHandle(handle:any):Promise<void>{await handleTransaction('readwrite',s=>s.put(handle,HANDLE_KEY));}
 export async function getFileHandle():Promise<any>{return handleTransaction('readonly',s=>s.get(HANDLE_KEY));}
-export async function removeFileHandle():Promise<void>{await handleTransaction('readwrite',s=>s.delete(HANDLE_KEY));}
+export async function removeFileHandle():Promise<void>{await handleTransaction('readwrite',s=>{s.delete('file_sync_base');return s.delete(HANDLE_KEY);});}
 // The baseline belongs to a particular file, and is shared by all tabs on this device.
 export async function getFileSyncBase(handle:any):Promise<AppState|null>{
   const saved=await handleTransaction('readonly',s=>s.get('file_sync_base'));
