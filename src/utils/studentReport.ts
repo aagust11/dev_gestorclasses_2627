@@ -1,4 +1,5 @@
 import {studentAttendance,attendanceLabels} from './attendance';
+import {studentSubjects} from './studentEnrolment';
 import {AppState, CalculationMode, TermStudentGrades} from '../types';
 import {studentPeriodGrade,studentSessionHistory,sessionComments} from './studentProfile';
 export const reportMethods:CalculationMode[]=['mean','median','mode'];
@@ -7,16 +8,19 @@ export type ReportGrade={score?:number|null;qual?:string;isManual?:boolean};
 export const gradeText=(g?:ReportGrade)=>g?.score==null?'Pendent':`${g.score.toFixed(2)} ${g.qual||''}`.trim();
 export const comparedGradeText=(g?:ReportGrade,auto?:ReportGrade)=>`${gradeText(g)}${g?.isManual?` (manual; calculada: ${gradeText(auto)})`:''}`;
 export function buildStudentReport(state:AppState,studentId:string) {
-  const subjects=state.subjects.filter(s=>!s.isGeneral&&s.students.some(st=>st.id===studentId));
+  const subjects=studentSubjects(state,studentId).filter(s=>!s.isGeneral);
   const student=state.studentRegistry?.[studentId]||subjects.flatMap(s=>s.students).find(st=>st.id===studentId);
   if(!student)throw new Error('Alumne no disponible');
   const periods=[...state.config.terms.map(t=>({id:t.id,name:t.name})),{id:'annual',name:'Curs complet'}];
-  const evaluations=subjects.filter(s=>!s.isParent).flatMap(subject=>periods.map(period=>{
+  const evaluations=subjects.filter(s=>!s.isParent).flatMap(original=>{
+    // A report-only roster includes former pupils without re-enrolling them in the app.
+    const subject=original.students.some(s=>s.id===studentId)?original:{...original,students:[...original.students,student]};
+    return periods.map(period=>{
     const actual=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m)])) as Record<CalculationMode,TermStudentGrades>;
     const automatic=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m,true)])) as Record<CalculationMode,TermStudentGrades>;
     const competencies=state.competencies.filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>a.key.localeCompare(b.key,'ca',{numeric:true}));
     return {subject,period,actual,automatic,competencies,comment:state.periodComments?.[subject.id]?.[period.id]?.[studentId]||''};
-  }));
+  });});
   const history=studentSessionHistory(state,studentId);
   const attendance=studentAttendance(state,studentId);
   return {attendance,name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
