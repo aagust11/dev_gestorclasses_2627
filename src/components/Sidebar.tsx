@@ -46,7 +46,7 @@ export default function Sidebar({
           <img src={`${(import.meta as any).env?.BASE_URL||'./'}favicon.svg`} alt="" className="w-8 h-8"/>
         </div>
         <div>
-          <h1 className="text-sm font-bold tracking-tight text-white leading-tight">AulaFil</h1>
+          <h1 className="text-sm font-bold tracking-tight text-white leading-tight">Àula</h1>
           <span className="text-[10px] text-slate-500 font-medium">Diari i seguiment d’aula</span>
         </div>
       </div>
