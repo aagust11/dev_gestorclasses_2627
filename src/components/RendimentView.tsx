@@ -1,4 +1,5 @@
 import {periodGrades} from '../utils/gradeSelectors';
+import {SortButton,useTableSort} from './TableSort';
 import ClassReportPanel from './ClassReportPanel';
 import {subjectAttendance} from '../utils/attendance';
 import GradeComparison from './GradeComparison';
@@ -125,6 +126,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
   const [filterRiskGrade, setFilterRiskGrade] = useState(false);
   const [filterRiskAttendance, setFilterRiskAttendance] = useState(false);
   const [sortBy, setSortBy] = useState<'name' | 'grade' | 'attendance'>('name');
+  const {sort,toggle}=useTableSort();
 
   // Compute student level statistics
   const studentStats = useMemo(() => {
@@ -240,8 +242,8 @@ export default function RendimentView({ state }: RendimentViewProps) {
       return a.student.name.localeCompare(b.student.name); // Alphabetical
     });
 
-    return result;
-  }, [studentStats, searchTerm, filterRiskGrade, filterRiskAttendance, sortBy]);
+    return sort.direction==='desc'?result.reverse():result;
+  }, [studentStats, searchTerm, filterRiskGrade, filterRiskAttendance, sortBy,sort]);
 
   // Quick export reports to localized CSV
   const handleExportCSVReport = () => {
@@ -532,7 +534,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 text-slate-400 text-[10px] font-bold uppercase tracking-wider border-b border-slate-100">
-                      <th className="py-3 px-6">Alumne</th>
+                      <th className="py-3 px-6"><SortButton label="Alumne" column="name" sort={sort} onSort={key=>{setSortBy('name');toggle(key);}}/></th>
                       <th className="py-3 px-6 text-center">Registrades / pendents</th>
                       <th className="py-3 px-6 text-center">Assistència %</th>
                       <th className="py-3 px-6 text-center">Presencial / Retards / Absències</th>

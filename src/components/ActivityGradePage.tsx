@@ -1,3 +1,4 @@
+import {SortButton,sortRows,useTableSort} from './TableSort';
 import StudentName from './StudentName';
 import { sourceCriterionId, criterionRubric, preserveLegacyCriterionGrades } from '../utils/activityCriteria';
 import React, { useState } from 'react';
@@ -8,7 +9,8 @@ import { getActivityScore, getCriterionScore, getCompSettings, scoreToCompetenci
 
 export default function ActivityGradePage({state,activity,subject,onChange,onBack}:{state:AppState;activity:CurricularActivity;subject:Subject;onChange:(s:AppState)=>void;onBack:()=>void}) {
   const [search,setSearch]=useState('');
-  const settings=getCompSettings(subject), students=subject.students.filter(s=>s.name.toLocaleLowerCase().includes(search.toLocaleLowerCase()));
+  const {sort,toggle}=useTableSort();
+  const settings=getCompSettings(subject), students=sortRows(subject.students.filter(s=>s.name.toLocaleLowerCase().includes(search.toLocaleLowerCase())),sort,s=>s.name);
   const criteria=activity.criteriaIds || [];
   const update=(studentId:string,fn:(g:StudentActivityGrade)=>StudentActivityGrade)=>{
     const prepared=preserveLegacyCriterionGrades(activity);
@@ -18,7 +20,7 @@ export default function ActivityGradePage({state,activity,subject,onChange,onBac
   const clear=()=>{if(window.confirm('Esborrar totes les notes i comentaris d’aquesta activitat?')) onChange({...state,activities:(state.activities||[]).map(a=>a.id===activity.id?{...a,grades:{}}:a)});};
   return <DetailPage title={`Avaluar · ${activity.code}`} subtitle={`${activity.title} · ${subject.name}`} onBack={onBack} actions={<><span className="text-sm text-slate-500 self-center">Desat automàtic</span><button className="ds-button" onClick={()=>exportActivitiesToExcel(subject,[activity],state.criteria,subject.students)}>Exportar Excel</button><button className="ds-button text-rose-700" onClick={clear}>Esborrar notes</button></>}>
     <div className="ds-panel flex flex-wrap justify-between gap-3 items-center"><input aria-label="Cercar alumne" placeholder="Cercar alumne…" value={search} onChange={e=>setSearch(e.target.value)}/><span className="text-sm text-slate-600">{subject.students.length} alumnes · Lliurament {activity.endDate} · Pes {activity.weight}</span><span className="text-sm">AS ≥ {settings.thresholds.AS} · AN ≥ {settings.thresholds.AN} · AE ≥ {settings.thresholds.AE} /4</span></div>
-    <div className="grade-table-wrap"><table className="grade-table"><thead><tr><th>Alumne/a</th><th>Criteri / aspecte</th><th>Qualificació</th><th>Activitat</th><th>Comentari de l’alumne</th></tr></thead>
+    <div className="grade-table-wrap"><table className="grade-table"><thead><tr><th aria-sort={sort.direction==='asc'?'ascending':'descending'}><SortButton label="Alumne/a" column="name" sort={sort} onSort={toggle}/></th><th>Criteri / aspecte</th><th>Qualificació</th><th>Activitat</th><th>Comentari de l’alumne</th></tr></thead>
       {students.map((st,index)=>{const g=activity.grades?.[st.id] || {}, rows=criteria.length?criteria:[''], total=getActivityScore(activity,st.id,subject);return <tbody key={st.id} className={`activity-student-group ${index%2?'student-even':'student-odd'}`}>{rows.map((cid,row)=>{
         const cr=state.criteria.find(c=>c.id===sourceCriterionId(activity,cid)), cg=g.criteriaGrades?.[cid], type=cid?(activity.criteriaGradingType?.[cid] || 'competencial'):(activity.numericGradingType || 'numeric'), max=cid?(activity.criteriaMaxScores?.[cid] ?? 10):10;
         const score=cid?getCriterionScore(activity,st.id,cid,subject):total;

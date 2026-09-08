@@ -1,3 +1,4 @@
+import {SortButton,sortRows,useTableSort} from './TableSort';
 import {summarizeAttendance} from '../utils/attendance';
 import {getTermForDate} from '../utils/dateHelpers';
 import StudentName from './StudentName';
@@ -60,6 +61,7 @@ export default function SessionView({
   // General notes & links states for general teacher tasks
   const [newNote, setNewNote] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
+  const {sort,toggle}=useTableSort();
   const [newLinkLabel, setNewLinkLabel] = useState('');
   const [newLinkUrl, setNewLinkUrl] = useState('');
 
@@ -84,7 +86,7 @@ export default function SessionView({
     return sub.students || [];
   };
 
-  const students = getSubjectStudents(subject);
+  const students = sortRows(getSubjectStudents(subject),sort,s=>s.name);
   const normalizeSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
   const searchWords = normalizeSearch(studentSearch).split(/\s+/).filter(Boolean);
   const visibleStudents = students.map((student, idx) => ({student, idx})).filter(({student}) => searchWords.every(word => normalizeSearch(student.name).includes(word)));
@@ -609,7 +611,7 @@ export default function SessionView({
                   <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200 text-[10px] uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3 w-8 text-center font-mono text-slate-400">#</th>
-                      <th className="py-2.5 px-3 min-w-[140px]">Alumne/a</th>
+                      <th className="py-2.5 px-3 min-w-[140px]" aria-sort={sort.direction==='asc'?'ascending':'descending'}><SortButton label="Alumne/a" column="name" sort={sort} onSort={toggle}/></th>
                       <th className="py-2.5 px-3 min-w-[190px]">Assistència</th>
                       <th className="py-2.5 px-3 min-w-[200px]">Conducta i Comentaris</th>
                     </tr>

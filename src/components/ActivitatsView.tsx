@@ -1,3 +1,5 @@
+import ActivitiesOverview from './ActivitiesOverview';
+import {resolveActivityStatus as resolveSharedActivityStatus} from '../utils/activityStatus';
 import { sourceCriterionId, preserveLegacyCriterionGrades } from '../utils/activityCriteria';
 import { RubricDescriptions } from '../types';
 import { QUAL_ORDER } from '../utils/gradeCalculations';
@@ -54,6 +56,7 @@ interface ActivitatsViewProps {
 }
 
 export default function ActivitatsView({ state, onChangeState }: ActivitatsViewProps) {
+  const [showOverview,setShowOverview]=useState(true);
   // 1. Get subjects with valid students
   const validSubjects = useMemo(() => {
     return state.subjects.filter(s => !s.isGeneral);
@@ -507,66 +510,8 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   // - "oberta fins que arriba la data limit"
   // - "passada la data limit és pendent de corregir"
   // - "i una vegada tots els alumnes han estat corregits, es posaria en corregida"
-  const resolveActivityStatus = (act: CurricularActivity) => {
-    const isAuto = !act.status || act.status === 'auto';
-    const sub = state.subjects.find(s => s.id === act.subjectId);
-    let relevantStudents: Student[] = [];
-    if (sub) {
-      if (sub.isParent) {
-        const childSubs = state.subjects.filter(s => s.parentId === sub.id);
-        relevantStudents = childSubs.flatMap(c => c.students);
-      } else {
-        if (sub.students && sub.students.length > 0) {
-          relevantStudents = sub.students;
-        } else if (sub.parentId) {
-          const parent = state.subjects.find(s => s.id === sub.parentId);
-          relevantStudents = parent?.students || [];
-        }
-      }
-    }
-
-    const isFullyGraded = (a: CurricularActivity, id: string) => {
-      const owner=state.subjects.find(s=>s.id===a.subjectId);
-      if (!owner) return false;
-      return a.criteriaIds?.length ? a.criteriaIds.every(cid=>getCriterionScore(a,id,cid,owner)!==null) : getActivityScore(a,id,owner)!==null;
-    };
-    const childIds=state.subjects.filter(s=>s.parentId===sub?.id).map(s=>s.id);
-    const childActs=(state.activities||[]).filter(a=>childIds.includes(a.subjectId)&&a.code===act.code);
-    const gradedCount=relevantStudents.filter(st=>isFullyGraded(act,st.id)||(sub?.isParent&&childActs.some(a=>isFullyGraded(a,st.id)))).length;
-
-    if (!isAuto) return {effectiveStatus:act.status as 'not_open'|'open'|'pending_correction'|'corrected',isAuto:false,totalStudents:relevantStudents.length,gradedStudents:gradedCount};
-
-    // 1. Una vegada tots els alumnes han estat corregits -> corregida
-    const allGraded = relevantStudents.length > 0 && gradedCount === relevantStudents.length;
-    if (allGraded) {
-      return {
-        effectiveStatus: 'corrected' as const,
-        isAuto: true,
-        totalStudents: relevantStudents.length,
-        gradedStudents: gradedCount
-      };
-    }
-
-    if (act.startDate && getTodayStr() < act.startDate) return {effectiveStatus:'not_open' as const,isAuto:true,totalStudents:relevantStudents.length,gradedStudents:gradedCount};
-
-    // 2. Data límit: oberta fins a la data límit, passada la data límit és pendent de corregir
-    const todayStr = getTodayStr();
-    if (act.endDate && todayStr > act.endDate) {
-      return {
-        effectiveStatus: 'pending_correction' as const,
-        isAuto: true,
-        totalStudents: relevantStudents.length,
-        gradedStudents: gradedCount
-      };
-    }
-
-    return {
-      effectiveStatus: 'open' as const,
-      isAuto: true,
-      totalStudents: relevantStudents.length,
-      gradedStudents: gradedCount
-    };
-  };
+  const resolveActivityStatus=(act:CurricularActivity)=>resolveSharedActivityStatus(state,act);
+  if(showOverview||!activeSubject)return <ActivitiesOverview state={state} onOpen={id=>{setSelectedSubId(id);setShowOverview(false);}}/>;
 
   if (isEditing && activeSubject) return <DetailPage title={editingId ? 'Editar activitat' : 'Nova activitat'} subtitle={activeSubject.name} onBack={resetForm}><div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-slideDown">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -915,6 +860,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
   return (
     <div id="section-curricular-activities" className="space-y-6">
+      <button className="ds-button" onClick={()=>setShowOverview(true)}>← Tornar al resum de classes</button>
       
       {/* 1. View Header with subject selection */}
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
