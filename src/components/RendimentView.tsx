@@ -560,7 +560,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
                       return (
                         <tr key={student.id} className="hover:bg-slate-50/50 transition-colors">
                           <td className="py-3 px-6 font-bold text-slate-800">
-                            <StudentName state={state} student={student}/>
+                            <StudentName official state={state} student={student}/>
                           </td>
                           <td className="py-3 px-6 text-center text-slate-500">
                             {totalSessions} / {pendingCount}

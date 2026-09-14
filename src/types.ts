@@ -58,6 +58,7 @@ export interface ScheduleItem {
 export interface Student {
   id: string;
   name: string;
+  preferredName?: string;
 }
 
 export interface SubjectNumericItem {

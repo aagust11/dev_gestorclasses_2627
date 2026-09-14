@@ -1,3 +1,4 @@
+import {searchableStudentName} from '../utils/studentNames';
 import StudentName from './StudentName';
 /**
  * @license
@@ -803,7 +804,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                     </button>
                                   )}
                                   {students
-                                    .filter(st => st.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                    .filter(st => searchableStudentName(st).toLowerCase().includes(searchTerm.toLowerCase()))
                                     .map(st => {
                                       const isAlreadySeated = seatedStudentIds.includes(st.id);
                                       return (
@@ -831,7 +832,7 @@ export default function PlansView({ state, onChangeState }: PlansViewProps) {
                                         </button>
                                       );
                                     })}
-                                  {students.filter(st => st.name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
+                                  {students.filter(st => searchableStudentName(st).toLowerCase().includes(searchTerm.toLowerCase())).length === 0 && (
                                     <span className="text-[9px] text-slate-400 p-1.5 block">Arxiu buit</span>
                                   )}
                                 </div>

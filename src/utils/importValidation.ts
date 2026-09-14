@@ -18,7 +18,7 @@ const optionalDate:Check=(v,p,e)=>{if(v!=='')date(v,p,e);};
 const time:Check=(v,p,e)=>{if(typeof v!=='string'||(v!==''&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)))e(p,'Hora invàlida; cal HH:MM.');};
 const level=enumeration('NA','AS','AN','AE');
 const rubric=object({NA:text,AS:text,AN:text,AE:text});
-const student=object({id,name:text},['id','name']);
+const student=object({id,name:text,preferredName:text},['id','name']);
 const profile=object({notes:text,psi:text,supportMeasures:text,additionalComments:text});
 const grade=object({score:nullable(number(0,10)),qual:enumeration('','NA','AS','AN','AE'),isManual:bool,failedCECount:number(0,Infinity,true),autoFailed:bool},['score']);
 const criterionGrade=object({criterionId:id,rawScore:nullable(number(0)),maxScore:number(Number.MIN_VALUE),normalizedScore:nullable(number(0,4)),competencialScore:level});

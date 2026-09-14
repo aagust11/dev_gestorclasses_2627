@@ -1,6 +1,7 @@
+import {classroomName} from '../utils/studentNames';
 import React, {useEffect, useId, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
-import {AppState} from '../types';
+import {AppState,Student} from '../types';
 import {hasStudentSupport} from '../utils/studentProfile';
 
 function SupportDialog({name,measures,onClose}:{name:string;measures:string;onClose:()=>void}) {
@@ -18,9 +19,10 @@ function SupportDialog({name,measures,onClose}:{name:string;measures:string;onCl
   </dialog>,document.body);
 }
 
-export default function StudentName({state,student}:{state:AppState;student:{id:string;name:string}}) {
+export default function StudentName({state,student,official=false}:{state:AppState;student:Student;official?:boolean}) {
+  const name=official?student.name:classroomName(student);
   const [open,setOpen]=useState(false);
   const measures=state.studentProfiles?.[student.id]?.supportMeasures?.trim()||'';
   const activate=(event:React.SyntheticEvent)=>{event.preventDefault();event.stopPropagation();setOpen(true);};
-  return <>{student.name}{hasStudentSupport(state,student.id)&&<><span className="inline-block ml-1 text-violet-700 font-serif font-bold text-lg leading-none cursor-pointer rounded focus:outline-2 focus:outline-violet-700" role="button" tabIndex={0} aria-label={`Veure mesures de suport de ${student.name}`} aria-haspopup="dialog" aria-expanded={open} title={measures||'Té informació al PSI. Clica per veure les mesures de suport.'} onClick={activate} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){activate(e);}}} onKeyUp={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();}}}>ψ</span>{open&&<SupportDialog name={student.name} measures={measures} onClose={()=>setOpen(false)}/>}</>}</>;
+  return <>{name}{hasStudentSupport(state,student.id)&&<><span className="inline-block ml-1 text-violet-700 font-serif font-bold text-lg leading-none cursor-pointer rounded focus:outline-2 focus:outline-violet-700" role="button" tabIndex={0} aria-label={`Veure mesures de suport de ${name}`} aria-haspopup="dialog" aria-expanded={open} title={measures||'Té informació al PSI. Clica per veure les mesures de suport.'} onClick={activate} onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){activate(e);}}} onKeyUp={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();}}}>ψ</span>{open&&<SupportDialog name={name} measures={measures} onClose={()=>setOpen(false)}/>}</>}</>;
 }

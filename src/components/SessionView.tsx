@@ -1,3 +1,4 @@
+import {classroomName,searchableStudentName} from '../utils/studentNames';
 import {SortButton,sortRows,useTableSort} from './TableSort';
 import {summarizeAttendance} from '../utils/attendance';
 import {getTermForDate} from '../utils/dateHelpers';
@@ -86,10 +87,10 @@ export default function SessionView({
     return sub.students || [];
   };
 
-  const students = sortRows(getSubjectStudents(subject),sort,s=>s.name);
+  const students = sortRows(getSubjectStudents(subject),sort,s=>classroomName(s));
   const normalizeSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
   const searchWords = normalizeSearch(studentSearch).split(/\s+/).filter(Boolean);
-  const visibleStudents = students.map((student, idx) => ({student, idx})).filter(({student}) => searchWords.every(word => normalizeSearch(student.name).includes(word)));
+  const visibleStudents = students.map((student, idx) => ({student, idx})).filter(({student}) => searchWords.every(word => normalizeSearch(searchableStudentName(student)).includes(word)));
 
   // 3. Initialize or locate the existing session log
   const logKey = `${scheduleItemId}_${dateStr}`;
@@ -639,9 +640,9 @@ export default function SessionView({
                           <td className="py-2 px-3">
                             <div className="flex items-center space-x-2">
                               <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-[10px] font-bold font-mono shrink-0">
-                                {student.name.substring(0, 2).toUpperCase()}
+                                {classroomName(student).substring(0, 2).toUpperCase()}
                               </span>
-                              <span className="font-bold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]" title={student.name}>
+                              <span className="font-bold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]" title={classroomName(student)}>
                                 <StudentName state={state} student={student}/>
                               </span>
                             </div>
