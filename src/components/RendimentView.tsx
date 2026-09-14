@@ -1,3 +1,4 @@
+import {effectiveSessionLogs} from '../utils/sessionBlocks';
 import {periodGrades} from '../utils/gradeSelectors';
 import {SortButton,useTableSort} from './TableSort';
 import ClassReportPanel from './ClassReportPanel';
@@ -114,7 +115,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
   // Filter out any logged sessions relevant to this subject in the calculation period (up to calcEndDate)
   const activeSubjectSessions = useMemo(() => {
     if (!selectedSubId || isPosterior) return [];
-    return state.sessionLogs.filter(log => 
+    return effectiveSessionLogs(state).filter(log => 
       log.subjectId === selectedSubId &&
       log.date >= calculationPeriod.startDate &&
       log.date <= calcEndDate

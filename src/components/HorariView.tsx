@@ -1,398 +1,49 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import React,{useState} from 'react';
+import {AppState} from '../types';
+import {getMonday,getWeekDays,toIsoDate,formatCatalanShortDate,getHolidayForDate,getTermForDate,getOngoingActivitiesForSession,getLastDayBeforeDeliveryActivities} from '../utils/dateHelpers';
+import {getDayBlocks,timetableSettings,saveTimetableEntry,minutes,clock} from '../utils/sessionBlocks';
 
-import React, { useState } from 'react';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  CalendarRange, 
-  Info, 
-  GraduationCap, 
-  Settings2,
-  CalendarCheck,
-  RefreshCw,
-  Plus,
-  Trash2,
-  X,
-  Edit2,
-  AlertCircle,
-  ClipboardList
-} from 'lucide-react';
-import { AppState, ScheduleItem, Subject, TimeSlot, ScheduleSubstitution } from '../types';
-import { 
-  getMonday, 
-  getWeekDays, 
-  toIsoDate, 
-  formatCatalanDate, 
-  getHolidayForDate, 
-  getTermForDate,
-  formatCatalanShortDate,
-  getOngoingActivitiesForSession,
-  getLastDayBeforeDeliveryActivities
-} from '../utils/dateHelpers';
-
-interface HorariViewProps {
-  state: AppState;
-  onSelectSession: (scheduleItemId: string, date: string) => void;
-  onNavigateToConfig: () => void;
-  onChangeState: (nextState: AppState) => void;
-}
-
-export default function HorariView({
-  state,
-  onSelectSession,
-  onNavigateToConfig,
-  onChangeState
-}: HorariViewProps) {
-  // Navigation base date
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  
-  // Calculate Monday of current week
-  const mondayOfSelectedWeek = getMonday(new Date(currentDate));
-  const weekDays = getWeekDays(mondayOfSelectedWeek);
-  
-  // Formatted date range helper
-  const firstDayStr = formatCatalanShortDate(toIsoDate(weekDays[0]));
-  const lastDayStr = formatCatalanShortDate(toIsoDate(weekDays[4]));
-
-  const handlePrevWeek = () => {
-    const prev = new Date(currentDate);
-    prev.setDate(currentDate.getDate() - 7);
-    setCurrentDate(prev);
-  };
-
-  const handleNextWeek = () => {
-    const next = new Date(currentDate);
-    next.setDate(currentDate.getDate() + 7);
-    setCurrentDate(next);
-  };
-
-  const handleGoToToday = () => {
-    setCurrentDate(new Date());
-  };
-
-  // Find subject details
-  const getSubject = (subId: string): Subject | null => {
-    return state.subjects.find(s => s.id === subId) || null;
-  };
-
-  // Find parent subject
-  const getParentSubject = (sub: Subject): Subject | null => {
-    if (!sub.parentId) return null;
-    return state.subjects.find(s => s.id === sub.parentId) || null;
-  };
-
-  // Render the timetable grid
-  return (
-    <div id="horari-view-root" className="space-y-6">
-      {/* Top Header Controls */}
-      <div id="horari-nav-header" className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
-        <div className="flex items-center space-x-4">
-          <div className="bg-sky-50 text-sky-600 p-3 rounded-xl">
-            <CalendarRange className="w-6 h-6" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Horari de Classes</h2>
-            <p className="text-sm font-medium text-slate-500">
-              Setmana del <span className="text-slate-800 font-semibold">{firstDayStr}</span> al <span className="text-slate-800 font-semibold">{lastDayStr}</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Date Navigation Buttons */}
-        <div className="flex items-center gap-2">
-          <button
-            id="btn-prev-week"
-            onClick={handlePrevWeek}
-            className="flex items-center justify-center p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-            title="Setmana anterior"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          
-          <button
-            id="btn-goto-today"
-            onClick={handleGoToToday}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-          >
-            Avui
-          </button>
-
-          <button
-            id="btn-next-week"
-            onClick={handleNextWeek}
-            className="flex items-center justify-center p-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors"
-            title="Setmana següent"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Course limits check */}
-      {(() => {
-        const monIso = toIsoDate(weekDays[0]);
-        const friIso = toIsoDate(weekDays[4]);
-        const start = state.config.startDate;
-        const end = state.config.endDate;
-        if (friIso < start || monIso > end) {
-          return (
-            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start space-x-3 text-amber-800">
-              <Info className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <h3 className="font-bold text-sm">Fora del calendari lectiu</h3>
-                <p className="text-xs text-amber-700/90 mt-0.5">
-                  Aquesta setmana es troba fora de les dates configurades del curs escolar ({formatCatalanShortDate(start)} - {formatCatalanShortDate(end)}). Podeu reconfigurar-ho als paràmetres.
-                </p>
-              </div>
-            </div>
-          );
-        }
-        return null;
-      })()}
-
-      {/* Main Timetable Matrix */}
-      <div id="timetable-scroller" className="overflow-x-auto bg-white border border-slate-200/80 rounded-2xl shadow-sm">
-        <table className="w-full border-collapse min-w-[800px]">
-          {/* Header Row: Weekdays + exact dates */}
-          <thead>
-            <tr className="border-b border-slate-150 bg-slate-50/50">
-              <th className="p-4 text-xs font-bold uppercase tracking-wider text-slate-400 text-left w-32 border-r border-slate-150">
-                Hora / Franja
-              </th>
-              {weekDays.map((day, idx) => {
-                const iso = toIsoDate(day);
-                const holiday = getHolidayForDate(iso, state.config.holidays);
-                const term = getTermForDate(iso, state.config.terms);
-                const isToday = toIsoDate(new Date()) === iso;
-                
-                return (
-                  <th 
-                    key={idx} 
-                    className={`p-4 text-left border-r border-slate-150 last:border-r-0 relative ${
-                      isToday ? 'bg-sky-500/5' : ''
-                    }`}
-                  >
-                    <div className="flex items-baseline justify-between">
-                      <span className={`text-sm font-bold ${isToday ? 'text-sky-600' : 'text-slate-800'}`}>
-                        {['Dilluns', 'Dimarts', 'Dimecres', 'Dijous', 'Divendres'][idx]}
-                      </span>
-                      {term && (
-                        <span className="text-[10px] tracking-tight bg-slate-100 text-slate-500 font-semibold px-2 py-0.5 rounded-full">
-                          {term.name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span className={`text-xs ${isToday ? 'text-sky-500 font-semibold bg-sky-100 px-2 py-0.5 rounded-md' : 'text-slate-400'}`}>
-                        {formatCatalanShortDate(iso)}
-                      </span>
-                      {holiday && (
-                        <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded border border-amber-200 animate-pulse">
-                          Festiu
-                        </span>
-                      )}
-                    </div>
-                    {isToday && (
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-sky-500 rounded-t-lg"></div>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          
-          {/* Table Body: Slots and Assignments */}
-          <tbody>
-            {state.config.timeSlots.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-8 text-center">
-                  <div className="max-w-md mx-auto py-6 flex flex-col items-center">
-                    <Settings2 className="w-8 h-8 text-slate-300 mb-2" />
-                    <p className="text-sm font-bold text-slate-700">No hi ha hores configurades</p>
-                    <p className="text-xs text-slate-500 mt-1 mb-4 leading-relaxed">
-                      Encara no heu creat cap franja horària. Aneu a la configuració del curs per configurar les hores.
-                    </p>
-                    <button
-                      onClick={onNavigateToConfig}
-                      className="px-4 py-2 bg-sky-500 hover:bg-sky-600 font-semibold text-xs text-white rounded-xl shadow-md transition-all shadow-sky-500/10"
-                    >
-                      Configurar Franges
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              state.config.timeSlots.map((slot) => (
-                <tr key={slot.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/20 transition-colors">
-                  {/* Time label column */}
-                  <td className="p-4 border-r border-slate-150 align-top">
-                    <p className="text-xs font-bold text-slate-700">{slot.name}</p>
-                    {slot.startTime && slot.endTime && (
-                      <p className="text-[10px] font-mono font-medium text-slate-400 mt-1">
-                        {slot.startTime} - {slot.endTime}
-                      </p>
-                    )}
-                  </td>
-
-                  {/* 5 weekday columns */}
-                  {weekDays.map((day, dayIdx) => {
-                    const dayNum = dayIdx + 1; // 1 = Monday ... 5 = Friday
-                    const dIso = toIsoDate(day);
-                    const holiday = getHolidayForDate(dIso, state.config.holidays);
-                    
-                    // Retrieve relative schedule item
-                    const sItem = state.schedule.find(
-                      item => item.dayOfWeek === dayNum && item.timeSlotId === slot.id
-                    );
-                    const subject = sItem ? getSubject(sItem.subjectId) : null;
-                    const parentSubject = subject ? getParentSubject(subject) : null;
-                    const isToday = toIsoDate(new Date()) === dIso;
-
-                    // If holiday, shade the entire cell beautifully
-                    if (holiday) {
-                      return (
-                        <td 
-                          key={dayIdx} 
-                          className={`p-3 border-r border-slate-150 last:border-r-0 align-middle bg-amber-500/[0.02] ${
-                            isToday ? 'bg-sky-500/5' : ''
-                          }`}
-                        >
-                          <div className="flex flex-col items-center justify-center py-4 bg-amber-50/50 border border-amber-200/50 border-dashed rounded-xl p-2.5">
-                            <span className="text-[10px] uppercase tracking-wider font-extrabold text-amber-600 block">Festiu Escolar</span>
-                            <span className="text-xs font-medium text-amber-800 mt-1 text-center truncate max-w-[130px]">{holiday.label}</span>
-                          </div>
-                        </td>
-                      );
-                    }
-
-                    const isWithinCourse = dIso >= state.config.startDate && dIso <= state.config.endDate;
-                    const substitution = state.config.substitutions?.find(
-                      sub => sub.date === dIso && sub.timeSlotId === slot.id
-                    );
-
-                    return (
-                      <td 
-                        key={dayIdx} 
-                        className={`p-3 border-r border-slate-150 last:border-r-0 align-top min-h-[96px] ${
-                          isToday ? 'bg-sky-500/5' : ''
-                        }`}
-                      >
-                        {substitution ? (
-                          substitution.type === 'subject' ? (
-                            (() => {
-                              const subSubject = state.subjects.find(s => s.id === substitution.subjectId);
-                              if (!subSubject) return null;
-                              return (
-                                <div 
-                                  onClick={() => onSelectSession(substitution.id, dIso)}
-                                  className="w-full text-left p-3 rounded-xl border border-slate-705 bg-slate-800 text-slate-100 shadow-sm relative overflow-hidden group block min-h-[70px] flex flex-col justify-between cursor-pointer hover:bg-slate-750 transition-all duration-150"
-                                  style={{ 
-                                    borderLeftWidth: '5px', 
-                                    borderLeftColor: subSubject.color || '#64748b' 
-                                  }}
-                                >
-                                  <div>
-                                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mb-0.5">SUBSTITUÏT CLASSE</span>
-                                    <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight leading-snug group-hover:text-amber-200">
-                                      {subSubject.name}
-                                    </h4>
-                                  </div>
-                                  
-                                  <div className="flex items-center justify-between mt-2 opacity-55">
-                                    <span className="text-[8.5px] font-semibold text-slate-400">Fes clic per registrar</span>
-                                  </div>
-                                </div>
-                              );
-                            })()
-                          ) : (
-                            <div 
-                              className="w-full text-left p-3 rounded-xl border border-slate-705 bg-slate-800 text-slate-100 shadow-sm relative overflow-hidden group block min-h-[70px] flex flex-col justify-between"
-                              style={{ 
-                                borderLeftWidth: '5px', 
-                                borderLeftColor: '#64748b' 
-                              }}
-                            >
-                              <div>
-                                <span className="text-[9px] uppercase tracking-wider font-extrabold text-slate-400 block mb-0.5">SUBSTITUCIÓ IP</span>
-                                <h4 className="text-xs sm:text-sm font-bold text-slate-200 tracking-tight leading-snug">
-                                  {substitution.customReason}
-                                </h4>
-                              </div>
-                            </div>
-                          )
-                        ) : isWithinCourse && subject && sItem ? (
-                          (() => {
-                            const ongoingActs = getOngoingActivitiesForSession(state, subject.id, dIso);
-                            const lastDayActs = getLastDayBeforeDeliveryActivities(state, subject.id, dIso);
-
-                            return (
-                              <div className="relative group block">
-                                <button
-                                  id={`schedule-cell-${sItem.id}-${dIso}`}
-                                  onClick={() => onSelectSession(sItem.id, dIso)}
-                                  className="w-full text-left p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all duration-150 hover:shadow-sm cursor-pointer hover:-translate-y-0.5 relative overflow-hidden block min-h-[72px] pr-2 flex flex-col justify-between"
-                                  style={{ 
-                                    borderLeftWidth: '5px', 
-                                    borderLeftColor: subject.color || '#cbd5e1'
-                                  }}
-                                >
-                                  <div>
-                                    <h4 className="text-xs sm:text-sm font-bold text-slate-800 tracking-tight leading-snug group-hover:text-slate-950">
-                                      {subject.name}
-                                    </h4>
-                                    {parentSubject && (
-                                      <span className="text-[9.5px] text-slate-400 block truncate">
-                                        ({parentSubject.name})
-                                      </span>
-                                    )}
-                                  </div>
-
-                                  {/* Badges / Icons for ongoing tasks and last day before delivery */}
-                                  {(ongoingActs.length > 0 || lastDayActs.length > 0) && (
-                                    <div className="flex flex-wrap items-center gap-1 mt-1.5 pt-1 border-t border-slate-100">
-                                      {lastDayActs.length > 0 && (
-                                        <span 
-                                          title={`⚠️ Últim dia de classe abans del lliurament:\n${lastDayActs.map(a => `• ${a.title} (Límit: ${a.endDate})`).join('\n')}`}
-                                          className="inline-flex items-center gap-1 text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.5 rounded shadow-xs"
-                                        >
-                                          <AlertCircle className="w-2.5 h-2.5 text-amber-600 shrink-0" />
-                                          <span className="truncate max-w-[80px]">Últim dia</span>
-                                        </span>
-                                      )}
-
-                                      {ongoingActs.length > 0 && (
-                                        <span 
-                                          title={`Tasques en curs (${ongoingActs.length}):\n${ongoingActs.map(a => `• ${a.title} (Lliurament: ${a.endDate})`).join('\n')}`}
-                                          className="inline-flex items-center gap-1 text-[9px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded"
-                                        >
-                                          <ClipboardList className="w-2.5 h-2.5 text-indigo-600 shrink-0" />
-                                          <span>{ongoingActs.length} {ongoingActs.length === 1 ? 'tasca' : 'tasques'}</span>
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
-                                </button>
-                              </div>
-                            );
-                          })()
-                        ) : (
-                          <div className="w-full h-full min-h-[70px] flex items-center justify-center rounded-xl border border-dashed border-slate-100 bg-slate-50/10 p-2 text-slate-300">
-                            {/* Empty non-interactive slot */}
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-      
-    </div>
-  );
+type Props={state:AppState;onSelectSession:(id:string,date:string)=>void;onNavigateToConfig:()=>void;onChangeState:(state:AppState,base?:AppState)=>boolean|void};
+type Draft={base:AppState;id?:string;subjectId:string;dayOfWeek:number;startTime:string;endTime:string};
+const days=['Dilluns','Dimarts','Dimecres','Dijous','Divendres'];
+export default function HorariView({state,onSelectSession,onNavigateToConfig,onChangeState}:Props){
+  const [currentDate,setCurrentDate]=useState(()=>new Date());
+  const [draft,setDraft]=useState<Draft|null>(null);
+  const [settings,setSettings]=useState<({base:AppState}&ReturnType<typeof timetableSettings>)|null>(null);
+  const [editing,setEditing]=useState<string[]|null>(null);
+  const [error,setError]=useState('');
+  const config=timetableSettings(state);
+  const week=getWeekDays(getMonday(new Date(currentDate)));
+  const subjects=state.subjects.filter(s=>!s.isParent);
+  const back=()=>{setDraft(null);setSettings(null);setEditing(null);setError('');};
+  const edit=(id:string)=>{const item=state.schedule.find(s=>s.id===id);if(!item)return;const slot=state.config.timeSlots.find(s=>s.id===item.timeSlotId);setError('');setDraft({base:state,id,subjectId:item.subjectId,dayOfWeek:item.dayOfWeek,startTime:slot?.startTime||config.startTime,endTime:slot?.endTime||clock(Math.min(minutes(config.startTime)+60,1439))});};
+  const heading=(title:string)=><header className="page-heading flex justify-between items-center"><h2 className="text-xl font-bold">{title}</h2><button className="ds-button" onClick={back}>Tornar a l’horari</button></header>;
+  if(settings)return <section className="space-y-4">{heading('Configurar la vista d’horari')}<form className="ds-panel space-y-4" onSubmit={e=>{e.preventDefault();if(minutes(settings.endTime)<=minutes(settings.startTime)){setError('L’hora final ha de ser posterior a la inicial.');return;}const {base,...values}=settings;try{if(onChangeState({...base,config:{...base.config,timetable:values}},base)!==false)back();}catch(e){setError((e as Error).message);}}}><div className="grid sm:grid-cols-3 gap-4"><label className="ds-field">Hora d’inici<input required type="time" value={settings.startTime} onChange={e=>setSettings({...settings,startTime:e.target.value})}/></label><label className="ds-field">Hora de fi<input required type="time" value={settings.endTime} onChange={e=>setSettings({...settings,endTime:e.target.value})}/></label><label className="ds-field">Minuts de les franges<input required type="number" min={5} max={120} step={1} value={settings.slotMinutes} onChange={e=>setSettings({...settings,slotMinutes:Number(e.target.value)})}/></label></div><p className="text-sm text-slate-500">Les franges només divideixen la vista. No canvien la durada de les activitats ni esborren registres. Una activitat pot començar i acabar entre divisions.</p>{error&&<p role="alert" className="text-rose-700">{error}</p>}<button className="ds-button" type="submit">Desar vista d’horari</button></form></section>;
+  if(draft)return <section className="space-y-4">{heading(draft.id?'Editar activitat docent':'Nova activitat docent')}<form className="ds-panel space-y-4" onSubmit={e=>{e.preventDefault();try{const {base,...input}=draft;if(onChangeState(saveTimetableEntry(base,input),base)!==false)back();}catch(e){setError((e as Error).message);}}}>
+    <div className="grid sm:grid-cols-2 gap-4"><label className="ds-field">Assignatura / acció docent<select required value={draft.subjectId} onChange={e=>setDraft({...draft,subjectId:e.target.value})}><option value="" disabled>Selecciona…</option>{subjects.map(s=><option value={s.id} key={s.id}>{s.name}</option>)}</select></label><label className="ds-field">Dia de la setmana<select value={draft.dayOfWeek} onChange={e=>setDraft({...draft,dayOfWeek:Number(e.target.value)})}>{days.map((d,i)=><option value={i+1} key={d}>{d}</option>)}</select></label><label className="ds-field">Hora d’inici<input required type="time" value={draft.startTime} onChange={e=>{const start=e.target.value;setDraft({...draft,startTime:start,endTime:!draft.id&&Number.isFinite(minutes(start))?clock(Math.min(minutes(start)+60,1439)):draft.endTime});}}/></label><label className="ds-field">Hora de fi<input required type="time" value={draft.endTime} onChange={e=>setDraft({...draft,endTime:e.target.value})}/></label></div>
+    <p className="text-sm text-slate-500">Es repeteix setmanalment dins del calendari lectiu. Durada inicial: una hora. Les activitats consecutives de la mateixa assignatura o acció docent es mostren com un únic bloc.</p>
+    {error&&<p role="alert" className="text-rose-700">{error}</p>}<button className="ds-button" type="submit">Desar activitat docent</button></form></section>;
+  if(editing)return <section className="space-y-4">{heading('Editar les hores del bloc')}<p>Aquest bloc agrupa entrades consecutives de l’horari anterior. Pots ajustar cada entrada; els registres existents es conserven.</p>{editing.map(id=>{const item=state.schedule.find(s=>s.id===id),slot=state.config.timeSlots.find(s=>s.id===item?.timeSlotId);return <div className="ds-panel flex justify-between" key={id}><span>{slot?.startTime}–{slot?.endTime}</span><button className="ds-button" onClick={()=>edit(id)}>Editar aquesta entrada</button></div>;})}</section>;
+  const shift=(n:number)=>{const d=new Date(currentDate);d.setDate(d.getDate()+n);setCurrentDate(d);};
+  const columns=week.map(date=>{const iso=toIsoDate(date);return {iso,holiday:getHolidayForDate(iso,state.config.holidays),term:getTermForDate(iso,state.config.terms),blocks:getDayBlocks(state,iso)};});
+  const timed=columns.flatMap(c=>c.blocks).filter(b=>Number.isFinite(minutes(b.startTime))&&Number.isFinite(minutes(b.endTime))&&minutes(b.endTime)>minutes(b.startTime));
+  const start=Math.min(minutes(config.startTime),...timed.map(b=>minutes(b.startTime)));
+  const end=Math.max(minutes(config.endTime),...timed.map(b=>minutes(b.endTime)));
+  const scale=1.6,height=(end-start)*scale;
+  const ticks:number[]=[];for(let t=start;t<end;t+=config.slotMinutes)ticks.push(t);ticks.push(end);
+  return <section id="horari-view-root" className="space-y-3"><header className="page-heading flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">Horari de classes</h2><p className="text-sm text-slate-500">{formatCatalanShortDate(columns[0].iso)} – {formatCatalanShortDate(columns[4].iso)}</p></div><div className="flex gap-2 flex-wrap"><button className="ds-button" aria-label="Setmana anterior" onClick={()=>shift(-7)}>←</button><button className="ds-button" onClick={()=>setCurrentDate(new Date())}>Avui</button><button className="ds-button" aria-label="Setmana següent" onClick={()=>shift(7)}>→</button><button className="ds-button" onClick={()=>{setError('');setSettings({base:state,...config});}}>Configurar vista</button><button className="ds-button" onClick={()=>{setError('');setDraft({base:state,subjectId:subjects[0]?.id||'',dayOfWeek:1,startTime:config.startTime,endTime:clock(Math.min(minutes(config.startTime)+60,1439))});}}>Nova activitat docent</button><button className="ds-button" onClick={onNavigateToConfig}>Configuració del curs</button></div></header>
+    {(start<minutes(config.startTime)||end>minutes(config.endTime))&&<p className="text-sm text-amber-800">S’ha ampliat la vista per mostrar activitats fora de l’interval configurat.</p>}
+    <div className="overflow-auto rounded-xl border bg-white"><div style={{minWidth:850}}><div className="grid sticky top-0 z-20 bg-slate-50 border-b" style={{gridTemplateColumns:'72px repeat(5,minmax(0,1fr))'}}><div className="p-2 text-xs">Hora</div>{columns.map((c,i)=><div key={c.iso} className="p-2 border-l"><b>{days[i]}</b><span className="block text-xs">{formatCatalanShortDate(c.iso)}</span><span className="block text-xs text-sky-700">{c.term?.name}</span>{c.holiday&&<span className="text-xs text-amber-800">{c.holiday.label}</span>}</div>)}</div>
+    <div className="grid" style={{gridTemplateColumns:'72px repeat(5,minmax(0,1fr))'}}><div className="relative bg-slate-50 text-xs text-slate-500" style={{height:height+24}}>{ticks.map(t=><span key={t} className="absolute right-2" style={{top:(t-start)*scale}}>{clock(t)}</span>)}</div>{columns.map(c=><div key={c.iso} className={'relative border-l '+(c.iso===toIsoDate(new Date())?'bg-sky-50/30':'')} style={{height:height+24}}>
+      {ticks.map(t=><div key={t} className="absolute inset-x-0 border-t border-slate-100" style={{top:(t-start)*scale}}/>)}
+      {c.holiday?<p className="p-3 text-sm text-amber-800">Festiu · {c.holiday.label}</p>:c.iso<state.config.startDate||c.iso>state.config.endDate?<p className="p-3 text-sm text-slate-400">Fora del calendari lectiu</p>:c.blocks.filter(b=>Number.isFinite(minutes(b.startTime))&&Number.isFinite(minutes(b.endTime))&&minutes(b.endTime)>minutes(b.startTime)).map(b=>{
+        const subject=state.subjects.find(s=>s.id===b.subjectId);
+        const ongoing=getOngoingActivitiesForSession(state,b.subjectId,c.iso),due=getLastDayBeforeDeliveryActivities(state,b.subjectId,c.iso);
+        const overlaps=c.blocks.filter(x=>minutes(x.startTime)<minutes(b.endTime)&&minutes(x.endTime)>minutes(b.startTime));const lane=overlaps.findIndex(x=>x.id===b.id),lanes=overlaps.length||1;
+        return <article key={b.id} className="absolute rounded-lg border bg-white overflow-hidden shadow-sm flex flex-col" style={{top:(minutes(b.startTime)-start)*scale,height:(minutes(b.endTime)-minutes(b.startTime))*scale-2,left:`calc(${lane*100/lanes}% + 2px)`,width:`calc(${100/lanes}% - 4px)`,borderLeft:'4px solid '+(subject?.color||'#64748b')}}><button className="text-left p-2 flex-1 min-h-0 overflow-hidden" disabled={!subject} onClick={()=>onSelectSession(b.id,c.iso)} title={(subject?.name||b.reason||'Assignatura inexistent')+' · '+b.startTime+'–'+b.endTime}><b className="block text-sm">{subject?.name||b.reason||'Assignatura inexistent'}</b><span className="block text-xs">{b.startTime}–{b.endTime}</span>{b.substitution&&<span className="text-xs">Substitució</span>}{b.memberIds.length>1&&<span className="text-xs block">Registre únic · {b.memberIds.length} franges</span>}{ongoing.length>0&&<span className="mr-2" title={ongoing.map(a=>a.title).join('\n')} aria-label="Activitats en curs">📋</span>}{due.length>0&&<span title={due.map(a=>a.title).join('\n')} aria-label="Última sessió abans del lliurament">⏳</span>}</button>{!b.substitution&&<button className="text-xs text-sky-800 border-t py-1" onClick={()=>b.memberIds.length>1?setEditing(b.memberIds):edit(b.id)}>Editar</button>}</article>;
+      })}
+    </div>)}</div></div></div>
+    {columns.some(c=>c.blocks.some(b=>!Number.isFinite(minutes(b.startTime))||!Number.isFinite(minutes(b.endTime))||minutes(b.endTime)<=minutes(b.startTime)))&&<section className="ds-panel"><h3 className="font-bold">Entrades pendents de definir l’hora</h3>{columns.flatMap((c,i)=>c.blocks.filter(b=>!Number.isFinite(minutes(b.startTime))||!Number.isFinite(minutes(b.endTime))||minutes(b.endTime)<=minutes(b.startTime)).map(b=><div key={c.iso+b.id} className="flex gap-3 py-1"><span>{days[i]} · {state.subjects.find(s=>s.id===b.subjectId)?.name||b.reason||b.id}</span><button className="ds-button" disabled={!b.subjectId} onClick={()=>onSelectSession(b.id,c.iso)}>Obrir registre</button>{!b.substitution&&<button className="ds-button" onClick={()=>edit(b.id)}>Definir hores</button>}</div>))}</section>}
+    <p className="text-xs text-slate-500">Un bloc equival a una sessió d’assistència, independentment de la durada. Una pausa, un altre grup o una substitució separen els blocs.</p>
+  </section>;
 }

@@ -42,6 +42,8 @@ import {
 
 interface SessionViewProps {
   state: AppState;
+  displayStart?: string;
+  displayEnd?: string;
   scheduleItemId: string;
   dateStr: string;
   onBackToTimeline: () => void;
@@ -53,6 +55,8 @@ interface SessionViewProps {
 export default function SessionView({
   state,
   scheduleItemId,
+  displayStart,
+  displayEnd,
   dateStr,
   onBackToTimeline,
   onNavigateToSession,
@@ -94,7 +98,7 @@ export default function SessionView({
 
   // 3. Initialize or locate the existing session log
   const logKey = `${scheduleItemId}_${dateStr}`;
-  const existingLog = state.sessionLogs.find(l => l.id === logKey);
+  const existingLog = state.sessionLogs.find(l => l.id === logKey) || state.sessionLogs.find(l=>l.scheduleItemId===scheduleItemId&&l.date===dateStr&&l.subjectId===subject?.id);
 
   const [comments, setComments] = useState<string>('');
   const [nextSessionNotes, setNextSessionNotes] = useState<string>('');
@@ -122,6 +126,12 @@ export default function SessionView({
     setDraftComments({});
   }, [scheduleItemId, dateStr]);
 
+  useEffect(()=>{
+    setComments(existingLog?.comments||'');
+    setNextSessionNotes(existingLog?.nextSessionNotes||'');
+    setAttendance(existingLog?.attendance||{});
+  },[existingLog]);
+
   // Handle immediate auto-save triggers whenever inputs change
   const triggerSaveUpdate = (
     nextComments: string, 
@@ -130,7 +140,7 @@ export default function SessionView({
   ) => {
     if (!subject) return;
     const updatedLog: SessionLog = {
-      id: logKey,
+      id: existingLog?.id || logKey,
       scheduleItemId,
       subjectId: subject.id,
       date: dateStr,
@@ -429,7 +439,7 @@ export default function SessionView({
               {slot && (
                 <>
                   <span>•</span>
-                  <span>Franja: <strong className="text-slate-700 font-semibold">{slot.name} ({slot.startTime}-{slot.endTime})</strong></span>
+                  <span>Franja: <strong className="text-slate-700 font-semibold">{slot.name} ({displayStart||slot.startTime}-{displayEnd||slot.endTime})</strong></span>
                 </>
               )}
             </p>

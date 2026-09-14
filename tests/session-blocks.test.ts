@@ -1,0 +1,71 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import {getInitialState} from '../src/initialState';
+import {AppState,SessionLog} from '../src/types';
+import {getDayBlocks,combineBlockLogs,blockLogs,effectiveSessionLogs,storeBlockLog,saveTimetableEntry,timetableSettings} from '../src/utils/sessionBlocks';
+import {getProgrammedSessionsForSubject} from '../src/utils/dateHelpers';
+import {subjectAttendance} from '../src/utils/attendance';
+import {studentSessionHistory} from '../src/utils/studentProfile';
+import {normalizeState,validateState} from '../src/storage';
+import HorariView from '../src/components/HorariView';
+import SessionBlockPage from '../src/components/SessionBlockPage';
+const date='2026-09-14';
+function fixture():AppState{
+  const state=getInitialState();
+  return {...state,config:{...state.config,startDate:'2026-09-01',endDate:'2027-06-30',holidays:[],substitutions:[],timeSlots:[{id:'t1',name:'1',startTime:'09:00',endTime:'10:00'},{id:'t2',name:'2',startTime:'10:00',endTime:'11:00'}]},subjects:[{id:'s',name:'Tecnologia',color:'#123456',isGeneral:false,parentId:null,students:[{id:'p',name:'Alumne'}]}],schedule:[{id:'a',subjectId:'s',dayOfWeek:1,timeSlotId:'t1'},{id:'b',subjectId:'s',dayOfWeek:1,timeSlotId:'t2'}],sessionLogs:[],activities:[],competencies:[],criteria:[],plans:[],termGradesRecords:[]};
+}
+const log=(id:string,status:'present'|'absent'='present'):SessionLog=>({id:id+'_'+date,scheduleItemId:id,subjectId:'s',date,comments:'Diari '+id,nextSessionNotes:'Previsió '+id,attendance:{p:{status,regularComments:['Comentari '+id]}}});
+test('two adjacent hours are one chronological block and one programmed session',()=>{
+ const state=fixture(),blocks=getDayBlocks(state,date);assert.equal(blocks.length,1);assert.deepEqual(blocks[0].memberIds,['a','b']);assert.equal(blocks[0].endTime,'11:00');
+ assert.equal(getProgrammedSessionsForSubject(state,'s',date,date).length,1);
+ state.config.timeSlots.reverse();assert.equal(getDayBlocks(state,date)[0].startTime,'09:00');
+});
+test('breaks, groups and substitutions separate blocks and holidays exclude attendance',()=>{
+ const state=fixture();state.config.timeSlots[1].startTime='10:15';assert.equal(getDayBlocks(state,date).length,2);
+ state.config.timeSlots[1].startTime='10:00';state.schedule[1].subjectId='other';assert.equal(getDayBlocks(state,date).length,2);
+ state.schedule[1].subjectId='s';state.config.substitutions=[{id:'sub_change',date,timeSlotId:'t2',type:'subject',subjectId:'s'}];assert.equal(getDayBlocks(state,date).length,2);
+ state.config.holidays=[{date,label:'Festa'}];assert.equal(getProgrammedSessionsForSubject(state,'s',date,date).length,0);
+});
+test('a sole existing second-hour record remains the primary identity and is not duplicated',()=>{
+ const state=fixture();state.sessionLogs=[log('b')];const block=getDayBlocks(state,date)[0];assert.equal(block.id,'b');
+ const next=storeBlockLog(state,block,date,{...state.sessionLogs[0],comments:'Dues hores'});
+ assert.equal(next.sessionLogs.length,1);assert.equal(next.sessionLogs[0].id,'b_'+date);assert.deepEqual(next.sessionLogs[0].blockMemberIds,['a','b']);
+ assert.equal(getProgrammedSessionsForSubject(next,'s',date,date)[0].scheduleItemId,'b');
+ assert.equal(subjectAttendance(next,next.subjects[0],'annual',date).p.recorded,1);
+});
+test('legacy notes and individual comments survive merging; contradictory attendance is pending and reviewed',()=>{
+ const state=fixture();state.sessionLogs=[log('a'),log('b','absent')];const block=getDayBlocks(state,date)[0],merged=combineBlockLogs(block,date,blockLogs(state,block,date));
+ assert.equal(merged.conflicts.length,1);assert.equal(merged.log.attendance.p.status,'pending');assert.match(merged.log.comments,/Diari a\n\nDiari b/);
+ assert.deepEqual(merged.log.attendance.p.regularComments,['Comentari a','Comentari b']);
+ const summary=subjectAttendance(state,state.subjects[0],'annual',date).p;assert.equal(summary.total,1);assert.equal(summary.pending,1);assert.equal(summary.absent,0);
+ assert.equal(studentSessionHistory(state,'p').length,1);
+ const html=renderToStaticMarkup(React.createElement(SessionBlockPage,{state,scheduleItemId:'b',dateStr:date,onBackToTimeline:()=>{},onNavigateToSession:()=>{},onChangeState:()=>{},onSaveSessionLog:()=>{}}));
+ assert.match(html,/Unificar el registre/);assert.match(html,/disabled/);
+ const next=storeBlockLog(state,block,date,{...merged.log,attendance:{p:{...merged.log.attendance.p,status:'present'}}});
+ assert.equal(next.sessionLogs.length,1);assert.equal(state.sessionLogs.length,2);assert.equal(effectiveSessionLogs(next).length,1);assert.equal(validateState(next),true);
+ const restored=normalizeState(JSON.parse(JSON.stringify(next)));assert.deepEqual(restored.sessionLogs[0].blockMemberIds,['a','b']);assert.equal(restored.sessionLogs[0].attendance.p.regularComments?.length,2);
+});
+test('time editor permits arbitrary duration, rejects overlap and never changes slot identities used by old logs',()=>{
+ let state=fixture();state.schedule=[];const next=saveTimetableEntry(state,{subjectId:'s',dayOfWeek:1,startTime:'08:15',endTime:'10:15'});
+ assert.equal(getDayBlocks(next,date)[0].endTime,'10:15');assert.equal(next.config.timeSlots.length,3);assert.equal(validateState(next),true);
+ assert.throws(()=>saveTimetableEntry(next,{subjectId:'s',dayOfWeek:1,startTime:'09:00',endTime:'10:00'}),/solapa/);
+ assert.throws(()=>saveTimetableEntry(next,{subjectId:'s',dayOfWeek:1,startTime:'10:00',endTime:'09:00'}),/posterior/);
+ assert.equal(saveTimetableEntry(next,{subjectId:'s',dayOfWeek:1,startTime:'10:15',endTime:'11:15'}).schedule.length,2);
+});
+test('historical block membership and interval remain frozen when future schedule changes',()=>{
+ let state=fixture();state.sessionLogs=[log('a')];const block=getDayBlocks(state,date)[0];state=storeBlockLog(state,block,date,state.sessionLogs[0]);
+ const moved=saveTimetableEntry(state,{id:'b',subjectId:'s',dayOfWeek:1,startTime:'11:00',endTime:'12:00'});
+ assert.equal(getDayBlocks(moved,date).length,1);assert.equal(getDayBlocks(moved,date)[0].endTime,'11:00');assert.equal(getDayBlocks(moved,'2026-09-21').length,2);
+ assert.throws(()=>saveTimetableEntry(state,{id:'a',subjectId:'s',dayOfWeek:2,startTime:'09:00',endTime:'10:00'}),/històric/);
+});
+test('new timetable settings validate and leave existing records untouched',()=>{
+ const state=fixture();state.config.timetable={startTime:'08:00',endTime:'18:00',slotMinutes:15};assert.equal(validateState(state),true);assert.equal(timetableSettings(state).slotMinutes,15);
+ const invalid=structuredClone(state);invalid.config.timetable!.slotMinutes=0;assert.equal(validateState(invalid),false);
+ invalid.config.timetable={startTime:'18:00',endTime:'08:00',slotMinutes:30};assert.equal(validateState(invalid),false);
+ const html=renderToStaticMarkup(React.createElement(HorariView,{state,onChangeState:()=>{},onSelectSession:()=>{},onNavigateToConfig:()=>{}}));assert.match(html,/Configurar vista/);assert.match(html,/Nova activitat docent/);
+});
+test('overlapping legacy entries never collapse into a single block',()=>{
+ const state=fixture();state.config.timeSlots[1].startTime='09:30';assert.equal(getDayBlocks(state,date).length,2);
+});

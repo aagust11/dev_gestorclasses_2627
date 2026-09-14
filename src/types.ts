@@ -17,6 +17,9 @@ export interface StudentLog {
 }
 
 export interface SessionLog {
+  blockMemberIds?: string[];
+  startTime?: string;
+  endTime?: string;
   id: string; // scheduleItemId + "_" + date YYYY-MM-DD
   scheduleItemId: string;
   subjectId: string;
@@ -236,6 +239,7 @@ export interface AppState {
   studentProfiles?: Record<string, {notes?: string; psi?: string; supportMeasures?: string; additionalComments?: string}>;
   periodComments?: Record<string, Record<string, Record<string, string>>>; // subject → period → student; shared by all methods
   config: {
+    timetable?: {startTime:string;endTime:string;slotMinutes:number};
     teacherProfile?: {fullName:string;email:string};
     startDate: string; // YYYY-MM-DD
     endDate: string;   // YYYY-MM-DD

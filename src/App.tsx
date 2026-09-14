@@ -44,7 +44,7 @@ import {
 // Import Views
 import Sidebar from './components/Sidebar';
 import HorariView from './components/HorariView';
-import SessionView from './components/SessionView';
+import SessionView from './components/SessionBlockPage';
 import PlansView from './components/PlansView';
 import ConfiguracioView from './components/ConfiguracioView';
 import ClassesView from './components/ClassesView';
@@ -129,6 +129,7 @@ export default function App() {
         const remote=latest();
         const merged=syncStudentRegistry(combineSharedState(base,next,remote,false,preferLocal));
         assertValidImport(merged);
+        if(merged.sessionLogs.length<remote.sessionLogs.length)createRecoveryCopy(remote,'Abans d’unificar o eliminar registres de sessió');
         if(!remote.identityVersion||roster(remote)!==roster(merged))createRecoveryCopy(remote,'Abans de modificar matrícules o identitats');
         saveStateToLocalStorage(merged);
         localCommitted=true;

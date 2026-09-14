@@ -1,3 +1,4 @@
+import {getDayBlocks} from './sessionBlocks';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -134,70 +135,16 @@ export function getProgrammedSessionsForSubject(
   startCal: string,
   endCal: string
 ): { date: string; timeSlotId: string; scheduleItemId: string }[] {
-  const sessions: { date: string; timeSlotId: string; scheduleItemId: string }[] = [];
-  
-  const start = fromIsoDate(startCal);
-  const end = fromIsoDate(endCal);
-  
-  const current = new Date(start);
-  while (current <= end) {
-    const dIso = toIsoDate(current);
-    
-    // Check if it's holiday
-    const isHoliday = state.config.holidays.some(h => {
-      const hStart = h.date;
-      const hEnd = h.endDate || h.date;
-      return dIso >= hStart && dIso <= hEnd;
-    });
-    
-    if (!isHoliday) {
-      const dayOfWeek = current.getDay(); // 1=Mon, ..., 5=Fri
-      if (dayOfWeek >= 1 && dayOfWeek <= 5) {
-        // Evaluate all possible slots
-        state.config.timeSlots.forEach(slot => {
-          const sub = state.config.substitutions?.find(
-            s => s.date === dIso && s.timeSlotId === slot.id
-          );
-          
-          if (sub) {
-            // Substitution overrides normal schedule
-            if (sub.type === 'subject' && sub.subjectId === subjectId) {
-              sessions.push({
-                date: dIso,
-                timeSlotId: slot.id,
-                scheduleItemId: sub.id, // we can use substitution ID as scheduleItemId!
-              });
-            }
-          } else {
-            // No substitution, check regular schedule
-            const originalItems = state.schedule.filter(
-              item => item.dayOfWeek === dayOfWeek && item.timeSlotId === slot.id
-            );
-            originalItems.forEach(originalItem => {
-              if (originalItem.subjectId === subjectId) {
-                sessions.push({
-                   date: dIso,
-                   timeSlotId: slot.id,
-                   scheduleItemId: originalItem.id,
-                });
-              }
-            });
-          }
-        });
-      }
+  const sessions:{date:string;timeSlotId:string;scheduleItemId:string}[]=[];
+  const current=fromIsoDate(startCal),end=fromIsoDate(endCal);
+  while(current<=end){
+    const date=toIsoDate(current);
+    if(current.getDay()>=1&&current.getDay()<=5&&!getHolidayForDate(date,state.config.holidays)){
+      for(const block of getDayBlocks(state,date))if(block.subjectId===subjectId)sessions.push({date,timeSlotId:block.timeSlotId,scheduleItemId:block.id});
     }
-    current.setDate(current.getDate() + 1);
+    current.setDate(current.getDate()+1);
   }
-  
-  // Sort chronologically, then by slot list order
-  return sessions.sort((a, b) => {
-    if (a.date !== b.date) {
-      return a.date.localeCompare(b.date);
-    }
-    const idxA = state.config.timeSlots.findIndex(ts => ts.id === a.timeSlotId);
-    const idxB = state.config.timeSlots.findIndex(ts => ts.id === b.timeSlotId);
-    return idxA - idxB;
-  });
+  return sessions;
 }
 
 // Retorna les activitats d'una matèria que estan en curs durant la data d'una sessió
