@@ -110,7 +110,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
       calculationPeriod.startDate,
       calcEndDate
     );
-  }, [state.schedule,state.config.holidays,state.config.timeSlots,state.config.substitutions, selectedSubId, calculationPeriod, calcEndDate, isPosterior]);
+  }, [state.sessionLogs,state.schedule,state.config.holidays,state.config.timeSlots,state.config.substitutions, selectedSubId, calculationPeriod, calcEndDate, isPosterior]);
 
   // Filter out any logged sessions relevant to this subject in the calculation period (up to calcEndDate)
   const activeSubjectSessions = useMemo(() => {
@@ -120,7 +120,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
       log.date >= calculationPeriod.startDate &&
       log.date <= calcEndDate
     );
-  }, [selectedSubId, state.sessionLogs, calculationPeriod, calcEndDate, isPosterior]);
+  }, [state.schedule,state.config.timeSlots,state.config.substitutions,selectedSubId, state.sessionLogs, calculationPeriod, calcEndDate, isPosterior]);
 
   // Support search & filters
   const [searchTerm, setSearchTerm] = useState('');
