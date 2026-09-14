@@ -333,7 +333,7 @@ export default function SessionView({
   const lastDayActivities = subject ? getLastDayBeforeDeliveryActivities(state, subject.id, dateStr) : [];
 
   // Previous session log lookup
-  const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => l.id === `${prevItem.id}_${prevItem.date}`) || state.sessionLogs.find(l => l.subjectId === subject.id && l.date === prevItem.date)) : null;
+  const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => l.id === `${prevItem.id}_${prevItem.date}`)) : null;
 
   // General notes & links handlers for non-curricular subjects
   const handleAddGeneralNote = () => {

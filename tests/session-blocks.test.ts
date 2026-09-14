@@ -14,7 +14,7 @@ import SessionBlockPage from '../src/components/SessionBlockPage';
 const date='2026-09-14';
 function fixture():AppState{
   const state=getInitialState();
-  return {...state,config:{...state.config,startDate:'2026-09-01',endDate:'2027-06-30',holidays:[],substitutions:[],timeSlots:[{id:'t1',name:'1',startTime:'09:00',endTime:'10:00'},{id:'t2',name:'2',startTime:'10:00',endTime:'11:00'}]},subjects:[{id:'s',name:'Tecnologia',color:'#123456',isGeneral:false,parentId:null,students:[{id:'p',name:'Alumne'}]}],schedule:[{id:'a',subjectId:'s',dayOfWeek:1,timeSlotId:'t1'},{id:'b',subjectId:'s',dayOfWeek:1,timeSlotId:'t2'}],sessionLogs:[],activities:[],competencies:[],criteria:[],plans:[],termGradesRecords:[]};
+  return {...state,config:{...state.config,startDate:date,endDate:'2027-06-30',holidays:[],substitutions:[],timeSlots:[{id:'t1',name:'1',startTime:'09:00',endTime:'10:00'},{id:'t2',name:'2',startTime:'10:00',endTime:'11:00'}]},subjects:[{id:'s',name:'Tecnologia',color:'#123456',isGeneral:false,parentId:null,students:[{id:'p',name:'Alumne'}]}],schedule:[{id:'a',subjectId:'s',dayOfWeek:1,timeSlotId:'t1'},{id:'b',subjectId:'s',dayOfWeek:1,timeSlotId:'t2'}],sessionLogs:[],activities:[],competencies:[],criteria:[],plans:[],termGradesRecords:[]};
 }
 const log=(id:string,status:'present'|'absent'='present'):SessionLog=>({id:id+'_'+date,scheduleItemId:id,subjectId:'s',date,comments:'Diari '+id,nextSessionNotes:'Previsió '+id,attendance:{p:{status,regularComments:['Comentari '+id]}}});
 test('two adjacent hours are one chronological block and one programmed session',()=>{

@@ -64,9 +64,10 @@ export function combineBlockLogs(block:SessionBlock,date:string,logs:SessionLog[
   const log:SessionLog={...(logs[0]||{}),id:logs.length===1?logs[0].id:`${block.id}_${date}`,scheduleItemId:block.id,subjectId:block.subjectId,date,comments:join('comments'),nextSessionNotes:join('nextSessionNotes'),attendance,blockMemberIds:[...block.memberIds],startTime:block.startTime||undefined,endTime:block.endTime||undefined};
   return {log,conflicts};
 }
-const cache=new WeakMap<AppState,SessionLog[]>();
+const cache=new WeakMap<AppState,{refs:unknown[];logs:SessionLog[]}>();
 export function effectiveSessionLogs(state:AppState):SessionLog[]{
-  const cached=cache.get(state);if(cached)return cached;
+  const refs=[state.sessionLogs,state.schedule,state.config.timeSlots,state.config.substitutions];
+  const cached=cache.get(state);if(cached&&refs.every((r,i)=>r===cached.refs[i]))return cached.logs;
   const consumed=new Set<string>();const result:SessionLog[]=[];
   for(const date of new Set(state.sessionLogs.map(l=>l.date))){
     for(const block of getDayBlocks(state,date)){
@@ -74,7 +75,7 @@ export function effectiveSessionLogs(state:AppState):SessionLog[]{
       logs.forEach(l=>consumed.add(l.id));result.push(logs.length===1?logs[0]:combineBlockLogs(block,date,logs).log);
     }
   }
-  result.push(...state.sessionLogs.filter(l=>!consumed.has(l.id)));cache.set(state,result);return result;
+  result.push(...state.sessionLogs.filter(l=>!consumed.has(l.id)));cache.set(state,{refs,logs:result});return result;
 }
 export function storeBlockLog(state:AppState,block:SessionBlock,date:string,log:SessionLog):AppState{
   const old=blockLogs(state,block,date);const ids=new Set(old.map(l=>l.id));
