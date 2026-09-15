@@ -1,3 +1,4 @@
+import {AppState} from '../src/types';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -6,7 +7,7 @@ import {getInitialState} from '../src/initialState';
 import {saveBookmark,visibleBookmarks,safeBookmarkUrl} from '../src/utils/bookmarks';
 import {normalizeState,validateState} from '../src/storage';
 import BookmarkBar from '../src/components/BookmarkBar';
-function fixture(){const state=getInitialState();return {...state,subjects:[
+function fixture():AppState{const state=getInitialState();return {...state,subjects:[
  {id:'parent',name:'TEC',isParent:true,isGeneral:false,color:'#000',parentId:null,students:[]},
  {id:'a',name:'3A',isGeneral:false,color:'#000',parentId:'parent',students:[]},
  {id:'b',name:'3B',isGeneral:false,color:'#000',parentId:'parent',students:[]},
