@@ -38,6 +38,16 @@ export function getDayBlocks(state:AppState,date:string):SessionBlock[]{
     return block;
   }).sort((a,b)=>(minutes(a.startTime)||0)-(minutes(b.startTime)||0)||a.id.localeCompare(b.id));
 }
+
+/** General teaching actions share a diary by subject and date, without merging timetable geometry. */
+export function diaryBlock(state:AppState,block:SessionBlock,date:string):SessionBlock{
+  if(!state.subjects.find(s=>s.id===block.subjectId)?.isGeneral)return block;
+  const blocks=getDayBlocks(state,date).filter(b=>b.subjectId===block.subjectId);
+  const first=blocks[0]||block;
+  const historical=state.sessionLogs.filter(l=>l.date===date&&l.subjectId===block.subjectId);
+  return {...first,memberIds:[...new Set([...blocks.flatMap(b=>b.memberIds),...historical.map(l=>l.scheduleItemId)])],startTime:'',endTime:''};
+}
+
 export function blockLogs(state:AppState,block:SessionBlock,date:string){
   return state.sessionLogs.filter(l=>l.date===date&&l.subjectId===block.subjectId&&block.memberIds.includes(l.scheduleItemId))
     .sort((a,b)=>block.memberIds.indexOf(a.scheduleItemId)-block.memberIds.indexOf(b.scheduleItemId)||a.id.localeCompare(b.id));
@@ -66,13 +76,18 @@ export function combineBlockLogs(block:SessionBlock,date:string,logs:SessionLog[
 }
 const cache=new WeakMap<AppState,{refs:unknown[];logs:SessionLog[]}>();
 export function effectiveSessionLogs(state:AppState):SessionLog[]{
-  const refs=[state.sessionLogs,state.schedule,state.config.timeSlots,state.config.substitutions];
+  const refs=[state.sessionLogs,state.schedule,state.config.timeSlots,state.config.substitutions,state.subjects];
   const cached=cache.get(state);if(cached&&refs.every((r,i)=>r===cached.refs[i]))return cached.logs;
   const consumed=new Set<string>();const result:SessionLog[]=[];
   for(const date of new Set(state.sessionLogs.map(l=>l.date))){
-    for(const block of getDayBlocks(state,date)){
+    for(const visualBlock of getDayBlocks(state,date)){
+      const block=diaryBlock(state,visualBlock,date);
       const logs=blockLogs(state,block,date).filter(l=>!consumed.has(l.id));if(!logs.length)continue;
-      logs.forEach(l=>consumed.add(l.id));result.push(logs.length===1?logs[0]:combineBlockLogs(block,date,logs).log);
+      logs.forEach(l=>consumed.add(l.id));
+      const general=state.subjects.find(s=>s.id===block.subjectId)?.isGeneral;
+      const merged=logs.length===1&&!general?logs[0]:combineBlockLogs(block,date,logs).log;
+      if(general){delete merged.blockMemberIds;delete merged.startTime;delete merged.endTime;}
+      result.push(merged);
     }
   }
   result.push(...state.sessionLogs.filter(l=>!consumed.has(l.id)));cache.set(state,{refs,logs:result});return result;
@@ -80,6 +95,7 @@ export function effectiveSessionLogs(state:AppState):SessionLog[]{
 export function storeBlockLog(state:AppState,block:SessionBlock,date:string,log:SessionLog):AppState{
   const old=blockLogs(state,block,date);const ids=new Set(old.map(l=>l.id));
   const next={...log,scheduleItemId:block.id,subjectId:block.subjectId,date,blockMemberIds:[...block.memberIds],startTime:block.startTime||undefined,endTime:block.endTime||undefined};
+  if(state.subjects.find(s=>s.id===block.subjectId)?.isGeneral){delete next.blockMemberIds;delete next.startTime;delete next.endTime;}
   return {...state,sessionLogs:[...state.sessionLogs.filter(l=>!ids.has(l.id)),next]};
 }
 export function timetableSettings(state:AppState){

@@ -299,12 +299,12 @@ export default function SessionView({
       state.config.endDate
     );
 
-    const occurrences = programmed.map(p => ({
+    const occurrences = programmed.filter((p,i,all)=>!subject.isGeneral||all.findIndex(x=>x.date===p.date)===i).map(p => ({
       id: p.scheduleItemId,
       date: p.date,
     }));
 
-    const activeIdx = occurrences.findIndex(item => item.id === scheduleItemId && item.date === dateStr);
+    const activeIdx = occurrences.findIndex(item => (subject.isGeneral || item.id === scheduleItemId) && item.date === dateStr);
     
     return {
       prevItem: activeIdx > 0 ? occurrences[activeIdx - 1] : null,
@@ -333,7 +333,7 @@ export default function SessionView({
   const lastDayActivities = subject ? getLastDayBeforeDeliveryActivities(state, subject.id, dateStr) : [];
 
   // Previous session log lookup
-  const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => l.id === `${prevItem.id}_${prevItem.date}`)) : null;
+  const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => subject.isGeneral ? l.subjectId===subject.id&&l.date===prevItem.date : l.id === `${prevItem.id}_${prevItem.date}`)) : null;
 
   // General notes & links handlers for non-curricular subjects
   const handleAddGeneralNote = () => {
@@ -558,10 +558,10 @@ export default function SessionView({
       </div>
 
       {/* 2. Main Work Area: Compact Attendance Table (Left) + 3 Session Commentary Spaces (Right) */}
-      <div className="session-workspace">
+      <div className="session-workspace" style={subject.isGeneral?{display:'block'}:undefined}>
         
         {/* LEFT COLUMN: Compact Attendance & Conduct Table (7 cols) */}
-        <div className="session-attendance">
+        {!subject.isGeneral && <div className="session-attendance">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             
             {/* Table Header Bar */}
@@ -914,6 +914,8 @@ export default function SessionView({
           </div>
         </div>
 
+        }
+
         {/* RIGHT COLUMN: 3 Spaces for Session Continuity (5 cols) */}
         <div className="session-continuity">
           
@@ -976,6 +978,7 @@ export default function SessionView({
               </span>
             </div>
 
+            {subject.isGeneral&&<p className="text-xs text-slate-500 mb-2">Diari compartit per totes les franges d’aquesta acció docent en aquest dia.</p>}
             <textarea
               id="session-comments-area"
               rows={4}

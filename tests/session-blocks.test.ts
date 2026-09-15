@@ -4,7 +4,7 @@ import React from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
 import {getInitialState} from '../src/initialState';
 import {AppState,SessionLog} from '../src/types';
-import {getDayBlocks,combineBlockLogs,blockLogs,effectiveSessionLogs,storeBlockLog,saveTimetableEntry,timetableSettings} from '../src/utils/sessionBlocks';
+import {diaryBlock,getDayBlocks,combineBlockLogs,blockLogs,effectiveSessionLogs,storeBlockLog,saveTimetableEntry,timetableSettings} from '../src/utils/sessionBlocks';
 import {getProgrammedSessionsForSubject} from '../src/utils/dateHelpers';
 import {subjectAttendance} from '../src/utils/attendance';
 import {studentSessionHistory} from '../src/utils/studentProfile';
@@ -71,4 +71,37 @@ test('new timetable settings validate and leave existing records untouched',()=>
 });
 test('overlapping legacy entries never collapse into a single block',()=>{
  const state=fixture();state.config.timeSlots[1].startTime='09:30';assert.equal(getDayBlocks(state,date).length,2);
+});
+
+test('general actions share the daily diary across gaps without filling the timetable gap',()=>{
+ const state=fixture();state.subjects[0].isGeneral=true;state.subjects[0].students=[];
+ state.config.timeSlots[1].startTime='10:30';state.config.timeSlots[1].endTime='11:30';
+ const visual=getDayBlocks(state,date);assert.equal(visual.length,2);
+ const first=diaryBlock(state,visual[0],date),second=diaryBlock(state,visual[1],date);
+ assert.deepEqual(first,second);
+ const saved=storeBlockLog(state,first,date,log('a'));
+ assert.equal(saved.sessionLogs.length,1);assert.equal(saved.sessionLogs[0].blockMemberIds,undefined);
+ assert.equal(getDayBlocks(saved,date).length,2);
+ const reopened=diaryBlock(saved,getDayBlocks(saved,date)[1],date);
+ assert.equal(blockLogs(saved,reopened,date)[0].comments,'Diari a');
+ const edited=storeBlockLog(saved,reopened,date,{...saved.sessionLogs[0],comments:'Diari compartit'});
+ assert.equal(edited.sessionLogs.length,1);assert.equal(edited.sessionLogs[0].comments,'Diari compartit');
+ assert.equal(validateState(edited),true);
+ const projected={...edited,sessionLogs:effectiveSessionLogs(edited)};
+ assert.equal(getDayBlocks(projected,date).length,2);
+ const props={state:edited,scheduleItemId:'b',dateStr:date,onBackToTimeline:()=>{},onNavigateToSession:()=>{},onChangeState:()=>{},onSaveSessionLog:()=>{}};
+ const html=renderToStaticMarkup(React.createElement(SessionBlockPage,props));
+ assert.doesNotMatch(html,/Control d&#x27;Assistència|Control d'Assistència|session-attendance/);
+ assert.match(html,/Diari compartit per totes les franges/);
+});
+test('general daily diaries preserve legacy notes and remain isolated by day and action',()=>{
+ const state=fixture();state.subjects[0].isGeneral=true;state.config.timeSlots[1].startTime='10:30';
+ state.sessionLogs=[log('a'),log('b'),{...log('a'),id:'tomorrow',date:'2026-09-15'},{...log('b'),id:'other',subjectId:'other'}];
+ const block=diaryBlock(state,getDayBlocks(state,date)[1],date),logs=blockLogs(state,block,date);
+ assert.equal(logs.length,2);
+ const merged=combineBlockLogs(block,date,logs).log;
+ assert.match(merged.comments,/Diari a/);assert.match(merged.comments,/Diari b/);
+ const saved=storeBlockLog(state,block,date,merged);
+ assert.equal(saved.sessionLogs.length,3);
+ assert.ok(saved.sessionLogs.some(l=>l.id==='tomorrow'));assert.ok(saved.sessionLogs.some(l=>l.id==='other'));
 });
