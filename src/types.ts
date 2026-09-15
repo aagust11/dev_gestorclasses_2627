@@ -100,7 +100,7 @@ export interface Subject {
   numericItems?: SubjectNumericItem[]; // Items de qualificació per a assignatures numèriques
   compSettings?: CompetencyEvaluationSettings; // Valors i llindars de càlcul competencial
   generalNotes?: string[]; // Persistent notes for general teaching actions
-  generalLinks?: { id: string; label: string; url: string }[]; // Persistent links for general teaching actions
+  generalLinks?: { id: string; label: string; url: string; icon?: string; color?: string; shared?: boolean }[]; // Persistent links for general teaching actions
 }
 
 export interface Competency {

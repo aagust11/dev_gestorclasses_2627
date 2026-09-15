@@ -91,7 +91,7 @@ test('general actions share the daily diary across gaps without filling the time
  assert.equal(getDayBlocks(projected,date).length,2);
  const props={state:edited,scheduleItemId:'b',dateStr:date,onBackToTimeline:()=>{},onNavigateToSession:()=>{},onChangeState:()=>{},onSaveSessionLog:()=>{}};
  const html=renderToStaticMarkup(React.createElement(SessionBlockPage,props));
- assert.doesNotMatch(html,/Control d&#x27;Assistència|Control d'Assistència|session-attendance/);
+ assert.doesNotMatch(html,/Control d&#x27;Assistència|Control d'Assistència|Cercar alumne a la sessió/);
  assert.match(html,/Diari compartit per totes les franges/);
 });
 test('general daily diaries preserve legacy notes and remain isolated by day and action',()=>{

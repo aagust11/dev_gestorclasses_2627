@@ -1,3 +1,4 @@
+import BookmarkBar from './BookmarkBar';
 import TimetableSettings from './TimetableSettings';
 import StudentImportReview from './StudentImportReview';
 import StudentName from './StudentName';
@@ -758,7 +759,7 @@ export default function ConfiguracioView({
                   </div>
                 </form>
               </div>
-</DetailPage>;
+<BookmarkBar state={state} subject={state.subjects.find(s=>s.id===editingSubject.id)||editingSubject} onChangeState={onChangeState}/></DetailPage>;
 
   if (isCreatingSubject) return <DetailPage title="Nova assignatura" onBack={() => setIsCreatingSubject(false)}><div className="space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">

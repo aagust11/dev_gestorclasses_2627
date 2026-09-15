@@ -1,3 +1,4 @@
+import BookmarkBar from './BookmarkBar';
 import {classroomName,searchableStudentName} from '../utils/studentNames';
 import {SortButton,sortRows,useTableSort} from './TableSort';
 import {summarizeAttendance} from '../utils/attendance';
@@ -48,7 +49,7 @@ interface SessionViewProps {
   dateStr: string;
   onBackToTimeline: () => void;
   onNavigateToSession: (scheduleItemId: string, date: string) => void;
-  onChangeState?: (next: AppState) => void;
+  onChangeState?: (next: AppState,base?:AppState) => boolean | void;
   onSaveSessionLog: (log: SessionLog) => void;
 }
 
@@ -64,11 +65,8 @@ export default function SessionView({
   onSaveSessionLog
 }: SessionViewProps) {
   // General notes & links states for general teacher tasks
-  const [newNote, setNewNote] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const {sort,toggle}=useTableSort();
-  const [newLinkLabel, setNewLinkLabel] = useState('');
-  const [newLinkUrl, setNewLinkUrl] = useState('');
 
   // 1. Locate current schedule layout slot or substitution
   const isSubstitution = scheduleItemId.startsWith('sub_');
@@ -335,50 +333,6 @@ export default function SessionView({
   // Previous session log lookup
   const prevLog = (prevItem && subject) ? (state.sessionLogs.find(l => subject.isGeneral ? l.subjectId===subject.id&&l.date===prevItem.date : l.id === `${prevItem.id}_${prevItem.date}`)) : null;
 
-  // General notes & links handlers for non-curricular subjects
-  const handleAddGeneralNote = () => {
-    if (!newNote.trim() || !onChangeState || !subject) return;
-    const currentNotes = subject.generalNotes || [];
-    const updatedNotes = [...currentNotes, newNote.trim()];
-    const updatedSubject = { ...subject, generalNotes: updatedNotes };
-    const nextSubjects = state.subjects.map(s => s.id === subject.id ? updatedSubject : s);
-    onChangeState({ ...state, subjects: nextSubjects });
-    setNewNote('');
-  };
-
-  const handleRemoveGeneralNote = (index: number) => {
-    if(!window.confirm('Eliminar aquesta nota general de l’assignatura?'))return;
-    if (!onChangeState || !subject) return;
-    const currentNotes = subject.generalNotes || [];
-    const updatedNotes = currentNotes.filter((_, idx) => idx !== index);
-    const updatedSubject = { ...subject, generalNotes: updatedNotes };
-    const nextSubjects = state.subjects.map(s => s.id === subject.id ? updatedSubject : s);
-    onChangeState({ ...state, subjects: nextSubjects });
-  };
-
-  const handleAddGeneralLink = () => {
-    if (!newLinkLabel.trim() || !newLinkUrl.trim() || !onChangeState || !subject) return;
-    let url = newLinkUrl.trim();
-    if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
-    const currentLinks = subject.generalLinks || [];
-    const updatedLinks = [...currentLinks, { id: `link_${Date.now()}`, label: newLinkLabel.trim(), url }];
-    const updatedSubject = { ...subject, generalLinks: updatedLinks };
-    const nextSubjects = state.subjects.map(s => s.id === subject.id ? updatedSubject : s);
-    onChangeState({ ...state, subjects: nextSubjects });
-    setNewLinkLabel('');
-    setNewLinkUrl('');
-  };
-
-  const handleRemoveGeneralLink = (linkId: string) => {
-    if(!window.confirm('Eliminar aquest enllaç de l’assignatura?'))return;
-    if (!onChangeState || !subject) return;
-    const currentLinks = subject.generalLinks || [];
-    const updatedLinks = currentLinks.filter(l => l.id !== linkId);
-    const updatedSubject = { ...subject, generalLinks: updatedLinks };
-    const nextSubjects = state.subjects.map(s => s.id === subject.id ? updatedSubject : s);
-    onChangeState({ ...state, subjects: nextSubjects });
-  };
-
   if (!subject) {
     return (
       <div className="bg-white p-8 rounded-2xl text-center border border-slate-200">
@@ -558,7 +512,9 @@ export default function SessionView({
       </div>
 
       {/* 2. Main Work Area: Compact Attendance Table (Left) + 3 Session Commentary Spaces (Right) */}
-      <div className="session-workspace" style={subject.isGeneral?{display:'block'}:undefined}>
+      {!subject.isGeneral&&<BookmarkBar state={state} subject={subject} onChangeState={onChangeState}/>}
+      <div className="session-workspace">
+        {subject.isGeneral&&<div className="session-attendance"><BookmarkBar state={state} subject={subject} onChangeState={onChangeState}/></div>}
         
         {/* LEFT COLUMN: Compact Attendance & Conduct Table (7 cols) */}
         {!subject.isGeneral && <div className="session-attendance">
@@ -1018,32 +974,7 @@ export default function SessionView({
             </p>
           </div>
 
-          {/* Notes permanents / enllaços si és acció docent general */}
-          {subject.isGeneral && (
-            <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
-              <h4 className="text-xs font-bold text-slate-800">Bloc Permanent d'Anotacions</h4>
-              <div className="space-y-1 max-h-36 overflow-y-auto">
-                {(subject.generalNotes || []).map((note, nIdx) => (
-                  <div key={nIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-150 rounded-lg text-xs">
-                    <span className="truncate mr-2">{note}</span>
-                    <button onClick={() => handleRemoveGeneralNote(nIdx)} className="text-slate-400 hover:text-rose-600 font-bold">×</button>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-1.5">
-                <input
-                  type="text"
-                  placeholder="Nova nota permanent..."
-                  value={newNote}
-                  onChange={(e) => setNewNote(e.target.value)}
-                  className="flex-1 text-xs border border-slate-200 p-1.5 rounded-lg"
-                />
-                <button onClick={handleAddGeneralNote} className="px-2.5 py-1 bg-slate-800 text-white text-xs font-bold rounded-lg">
-                  Afegir
-                </button>
-              </div>
-            </div>
-          )}
+
 
         </div>
       </div>

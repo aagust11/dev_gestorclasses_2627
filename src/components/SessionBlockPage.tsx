@@ -14,7 +14,7 @@ export default function SessionBlockPage(p:Props){
   if(logs.length>1)return <Review key={JSON.stringify(logs)} {...p} block={block} logs={logs}/>;
   const projected={...p.state,sessionLogs:effectiveSessionLogs(p.state)};
   return <SessionView {...p} state={projected} scheduleItemId={block.id} displayStart={visualBlock.startTime} displayEnd={visualBlock.endTime}
-    onChangeState={next=>p.onChangeState({...next,sessionLogs:p.state.sessionLogs},p.state)}
+    onChangeState={(next,base)=>p.onChangeState({...next,sessionLogs:p.state.sessionLogs},base?{...base,sessionLogs:p.state.sessionLogs}:p.state)}
     onSaveSessionLog={log=>p.onChangeState(storeBlockLog(p.state,block,p.dateStr,log),p.state)}/>;
 }
 function Review(p:Props & {block:ReturnType<typeof getDayBlocks>[number];logs:SessionLog[]}){
