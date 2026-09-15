@@ -76,7 +76,8 @@ export async function loadFromFileHandle(fileHandle:any):Promise<AppState> {
 let writeTail:Promise<unknown>=Promise.resolve();
 export function waitForFileWrites(){return writeTail;}
 export function saveToFileHandle(fileHandle:any,state:AppState,guard:()=>void|Promise<void>=()=>{}):Promise<boolean> {
-  const contents=JSON.stringify(state,null,2);
+  assertValidImport(state);
+  const contents=JSON.stringify(state);
   const result=writeTail.then(async()=>{
     let writable:any;
     try {const ready=guard();if(ready)await ready;writable=await fileHandle.createWritable();await guard();await writable.write(contents);await guard();await writable.close();return true;}
@@ -145,6 +146,7 @@ function completeLegacyState(loadedState: any): AppState {
 
 // Write to LocalStorage
 export function saveStateToLocalStorage(state:AppState):void {
+  assertValidImport(state);
   localStorage.setItem(LOCAL_STORAGE_KEY,JSON.stringify(state));
 }
 

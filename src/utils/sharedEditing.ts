@@ -23,7 +23,8 @@ export function mergeEdits(base:AppState,local:AppState,remote:AppState,preferLo
           const maps=[b,l,r].map(a=>new Map(a.map((v:any)=>[key(v),v])));
           // Explicit concurrent reorders conflict; independent additions preserve both orders.
           const common=b.map(key).filter((id:string)=>maps[1].has(id)&&maps[2].has(id));
-          const order=(a:any[])=>a.map(key).filter((id:string)=>common.includes(id));
+          const commonIds=new Set(common);
+          const order=(a:any[])=>a.map(key).filter((id:string)=>commonIds.has(id));
           const bo=order(b),lo=order(l),ro=order(r);
           if(!equal(lo,bo)&&!equal(ro,bo)&&!equal(lo,ro)){conflicts.push(path+'.ordre');}
           const primary=!equal(lo,bo)?l:r;
@@ -33,6 +34,8 @@ export function mergeEdits(base:AppState,local:AppState,remote:AppState,preferLo
         return Object.fromEntries([...new Set([...Object.keys(b),...Object.keys(l),...Object.keys(r)])].map(k=>[k,merge(b[k],l[k],r[k],path?`${path}.${k}`:k)]).filter(([,v])=>v!==undefined));
       }
     }
+    // Optional collections can be created independently in different tabs.
+    if(b===undefined&&Array.isArray(l)&&Array.isArray(r)&&[l,r].every(a=>a.every(v=>v&&typeof v==='object'&&typeof v.id==='string')))return merge([],l,r,path);
     // New dictionaries may independently acquire distinct entries.
     if(b===undefined&&l&&r&&typeof l==='object'&&typeof r==='object'&&!Array.isArray(l)&&!Array.isArray(r))return merge({},l,r,path);
     conflicts.push(path);return preferLocal?l:r;

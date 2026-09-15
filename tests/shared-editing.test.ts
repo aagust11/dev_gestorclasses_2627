@@ -51,3 +51,16 @@ test('data menu exposes recovery actions and reviewed notices are hidden by defa
   const noop=()=>{};const props:any={status:'saved',busy:false,canEdit:true,linkedFileName:null,availableName:'old.json',notices:[{kind:'file',key:'seen',message:'unique reviewed message'}],reviewed:['seen'],conflicts:[],copies:[],onReview:noop,onRetry:noop,onKeepLocal:noop,onDiscard:noop,onDownload:noop,onForget:noop,onConnect:noop,onKeepCurrent:noop,onChooseFile:noop,onRenew:noop,onOpenRecovery:noop,onClearCopies:noop,onRestore:noop,onImport:noop,onDownloadOriginal:noop};
   const html=renderToStaticMarkup(React.createElement(DataManagement,props));assert.doesNotMatch(html,/unique reviewed message/);assert.match(html,/Oblidar l’enllaç/);assert.match(html,/Arxivar i eliminar/);
 });
+
+test('independent first bookmark additions merge without losing either tab',()=>{
+ const base=fixture();base.subjects=[{id:'subject',name:'Subject',students:[]}];
+ const local=structuredClone(base),remote=structuredClone(base);
+ local.subjects[0].generalLinks=[{id:'l',label:'Local',url:'https://example.com/a',shared:true}];
+ remote.subjects[0].generalLinks=[{id:'r',label:'Remote',url:'https://example.com/b',image:'stored-image'}];
+ const merged=combineSharedState(base,local,remote);
+ assert.equal(merged.subjects[0].generalLinks!.length,2);
+ assert.ok(merged.subjects[0].generalLinks!.some(l=>l.id==='r'&&l.image==='stored-image'));
+ assert.ok(merged.subjects[0].generalLinks!.some(l=>l.id==='l'&&l.shared));
+ const conflict=structuredClone(remote);conflict.subjects[0].generalLinks=[{id:'l',label:'Different',url:'https://example.com/a'}];
+ assert.throws(()=>combineSharedState(base,local,conflict),EditConflict);
+});

@@ -929,8 +929,7 @@ export default function SessionView({
                 </h3>
               </div>
               <span className="text-[10.5px] font-semibold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
-                Desat
+                Desat automàtic · estat a Dades i desat
               </span>
             </div>
 

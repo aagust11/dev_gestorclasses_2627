@@ -10,25 +10,15 @@ import {SHARED_STATE_KEY,FILE_LINK_KEY,recoveryRaw,removeRecoveryCopies,normaliz
 import {prepareImportedState,triggerRawJsonDownload} from './storage';
 import {syncStudentRegistry,identityConflicts} from './utils/studentIdentity';
 import {IdentityReview} from './components/IdentityReview';
-import {createRecoveryCopy,recoveryCopies,readStoredRaw,waitForFileWrites} from './storage';
+import {createRecoveryCopy,recoveryCopies,readStoredRaw} from './storage';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { 
-  Download, 
-  Upload, 
-  RotateCcw, 
-  FileJson, 
-  Check, 
-  HardDrive,
-  BookOpen,
-  CalendarCheck,
-  AlertCircle
-} from 'lucide-react';
-import { AppState, SessionLog } from './types';
+
+import { AppState } from './types';
 import { getInitialState } from './initialState';
 import { 
   loadStateFromLocalStorage, 
@@ -38,7 +28,6 @@ import {
   setFileHandle,
   removeFileHandle,
   verifyPermission,
-  saveToFileHandle,
 } from './storage';
 
 // Import Views
@@ -54,7 +43,7 @@ import StudentsView from './components/StudentsView';
 import QualificacionsView from './components/QualificacionsView';
 
 export default function App() {
-  const [localState, setLocalState] = useState<AppState>(getInitialState());
+  const [localState, setLocalState] = useState<AppState>(getInitialState);
   const [configSubjectId, setConfigSubjectId] = useState<string | null>(null);
   const [studentId,setStudentId]=useState<string|null>(null);
   const openStudent=(id:string)=>{setStudentId(id);setActiveView('alumnat');};
@@ -70,6 +59,7 @@ export default function App() {
   const [lastFileCheck,setLastFileCheck]=useState<string|null>(null);
   const [fileReady,setFileReady]=useState(false);
   const checkingFile=useRef(false);
+  const lastQueuedFileWrite=useRef(0);
 
   // File Input Ref for traditional fallback uplinks
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -128,14 +118,18 @@ export default function App() {
       await withSharedWrite(navigator.locks,async()=>{
         const remote=latest();
         const merged=syncStudentRegistry(combineSharedState(base,next,remote,false,preferLocal));
-        assertValidImport(merged);
         if(merged.sessionLogs.length<remote.sessionLogs.length)createRecoveryCopy(remote,'Abans d’unificar o eliminar registres de sessió');
         if(!remote.identityVersion||roster(remote)!==roster(merged))createRecoveryCopy(remote,'Abans de modificar matrícules o identitats');
         saveStateToLocalStorage(merged);
         localCommitted=true;
         acknowledged.current=next;
-        // Every tab writes the same shared target while holding the transaction lock.
-        await writeLinked(merged,preferLocal);
+        // Persist every accepted local change; skip obsolete file snapshots during bursts.
+        // A continuous stream still reaches the file at least once every two seconds
+        // once the previous I/O completes. Always flush the final queued change.
+        if(pending.current===1||preferLocal||Date.now()-lastQueuedFileWrite.current>=2000){
+          await writeLinked(merged,preferLocal);
+          lastQueuedFileWrite.current=Date.now();
+        }
       });
     }).catch(e=>{if(!localCommitted)acknowledged.current=base;fail(e);}).finally(()=>{
       pending.current--;
@@ -178,14 +172,16 @@ export default function App() {
     return()=>{clearInterval(timer);window.removeEventListener('focus',check);window.removeEventListener('online',check);document.removeEventListener('visibilitychange',check);};
   },[canEdit]);
   useEffect(()=>{
-    const guard=(e:BeforeUnloadEvent)=>{if(saveStatus!=='saved'){e.preventDefault();e.returnValue='';}};
+    const guard=(e:BeforeUnloadEvent)=>{if(pending.current>0||checkingFile.current||busy||saveStatus!=='saved'){e.preventDefault();e.returnValue='';}};
     window.addEventListener('beforeunload',guard);return()=>window.removeEventListener('beforeunload',guard);
-  },[saveStatus]);
+  },[saveStatus,busy]);
   const triggerStateUpdate=(next:AppState,draftBase?:AppState)=>{
     if(blocked||busy||!canEdit||!fileReady||failed.current)return false;
+    const base=draftBase||current.current;
+    if(equal(base,next))return true;
     try{assertValidImport(next);}catch(e){setEditError('Canvi no desat: corregeix els camps indicats.');setEditIssues(e instanceof ImportValidationError?e.report.issues:[]);return false;}
     setEditError('');setEditIssues([]);
-    const base=draftBase||current.current,normalized=syncStudentRegistry(next);
+    const normalized=syncStudentRegistry(next);
     install(normalized);void saveChange(base,normalized);return true;
   };
   const retry=async(preferLocal=false)=>{

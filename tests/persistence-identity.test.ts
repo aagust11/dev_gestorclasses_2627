@@ -54,3 +54,15 @@ test('explicit merge moves enrolments and history, but conflicting records never
 test('an unenrolled student retains their central profile and can export a report',()=>{
   const st=newStudent('Former student');const d:any=syncStudentRegistry({...state(),subjects:[subject('a',[st])]});d.subjects=[];const next=syncStudentRegistry(d);assert.equal(next.studentRegistry![st.id].name,st.name);assert.equal(buildStudentReport(next,st.id).name,st.name);
 });
+
+test('invalid writes cannot replace valid browser data or open a file writer',()=>{
+ const memory=new Map<string,string>();
+ globalThis.localStorage={getItem:k=>memory.get(k)??null,setItem:(k,v)=>memory.set(k,String(v))} as any;
+ const good=state();saveStateToLocalStorage(good);
+ const raw=localStorage.getItem('gestor_classes_app_state');
+ const invalid={...good,activities:'invalid'} as any;let opened=false;
+ assert.throws(()=>saveStateToLocalStorage(invalid));
+ assert.equal(localStorage.getItem('gestor_classes_app_state'),raw);
+ assert.throws(()=>saveToFileHandle({createWritable:()=>{opened=true;}},invalid));
+ assert.equal(opened,false);
+});
