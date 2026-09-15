@@ -9,6 +9,7 @@ import {getProgrammedSessionsForSubject} from '../src/utils/dateHelpers';
 import {subjectAttendance} from '../src/utils/attendance';
 import {studentSessionHistory} from '../src/utils/studentProfile';
 import {normalizeState,validateState} from '../src/storage';
+import TimetableSettings from '../src/components/TimetableSettings';
 import HorariView from '../src/components/HorariView';
 import SessionBlockPage from '../src/components/SessionBlockPage';
 const date='2026-09-14';
@@ -64,7 +65,9 @@ test('new timetable settings validate and leave existing records untouched',()=>
  const state=fixture();state.config.timetable={startTime:'08:00',endTime:'18:00',slotMinutes:15};assert.equal(validateState(state),true);assert.equal(timetableSettings(state).slotMinutes,15);
  const invalid=structuredClone(state);invalid.config.timetable!.slotMinutes=0;assert.equal(validateState(invalid),false);
  invalid.config.timetable={startTime:'18:00',endTime:'08:00',slotMinutes:30};assert.equal(validateState(invalid),false);
- const html=renderToStaticMarkup(React.createElement(HorariView,{state,onChangeState:()=>{},onSelectSession:()=>{},onNavigateToConfig:()=>{}}));assert.match(html,/Configurar vista/);assert.match(html,/Nova activitat docent/);
+ const html=renderToStaticMarkup(React.createElement(HorariView,{state,onChangeState:()=>{},onSelectSession:()=>{},onNavigateToConfig:()=>{}}));assert.doesNotMatch(html,/Configurar vista|Nova activitat docent|>Editar<|Definir hores/);
+ const settings=renderToStaticMarkup(React.createElement(TimetableSettings,{state,onChangeState:()=>{}}));
+ assert.match(settings,/Configurar vista d’horari/);assert.match(settings,/Nova activitat docent/);assert.match(settings,/>Editar</);assert.match(settings,/09:00/);
 });
 test('overlapping legacy entries never collapse into a single block',()=>{
  const state=fixture();state.config.timeSlots[1].startTime='09:30';assert.equal(getDayBlocks(state,date).length,2);
