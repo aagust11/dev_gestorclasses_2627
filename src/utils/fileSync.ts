@@ -5,7 +5,12 @@ import {syncStudentRegistry} from './studentIdentity';
 import {combineSharedState,EditConflict,equal} from './sharedEditing';
 
 export const FILE_POLL_MS=15000;
-const prepare=(state:AppState)=>syncStudentRegistry(normalizeState(state));
+const prepare=(state:AppState)=>{
+  // Compare exactly what JSON can persist: optional undefined properties disappear.
+  // Validate first so serializing cannot disguise invalid numeric values.
+  assertValidImport(state);
+  return syncStudentRegistry(normalizeState(JSON.parse(JSON.stringify(state))));
+};
 export function mergeFileStates(base:AppState|null,local:AppState,remote:AppState,preferLocal=false):AppState{
   local=prepare(local);remote=prepare(remote);base=base&&prepare(base);
   if(equal(local,remote))return remote;

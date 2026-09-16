@@ -69,6 +69,8 @@ export default function App() {
   const queue=useRef<Promise<void>>(Promise.resolve());
   const pending=useRef(0);
   const failed=useRef(false);
+  const fileWarning=useRef('');
+  const fileRetryAfter=useRef(0);
   const [canEdit,setCanEdit]=useState(false);
   const [blocked,setBlocked]=useState(false);
   const [busy,setBusy]=useState(false);
@@ -109,6 +111,19 @@ export default function App() {
     });
     setLastFileCheck(new Date().toISOString());
   };
+  // A file problem must not discard or block changes already saved in the browser.
+  const writeLinkedNonBlocking=async(state:AppState,preferLocal=false)=>{
+    try{
+      await writeLinked(state,preferLocal);
+      fileWarning.current='';fileRetryAfter.current=0;
+      setSaveError('');setConflicts([]);
+    }catch(e){
+      fileWarning.current='Desat al navegador; pendent de sincronitzar el fitxer. '+((e as Error).message||String(e));
+      fileRetryAfter.current=Date.now()+FILE_POLL_MS;
+      setSaveError(fileWarning.current);setSaveStatus('error');
+      setConflicts(e instanceof EditConflict?e.paths:[]);
+    }
+  };
   const roster=(s:AppState)=>JSON.stringify(s.subjects.map(x=>[x.id,x.students.map(st=>st.id)]));
   const saveChange=(base:AppState,next:AppState,preferLocal=false)=>{
     let localCommitted=false;
@@ -126,14 +141,14 @@ export default function App() {
         // Persist every accepted local change; skip obsolete file snapshots during bursts.
         // A continuous stream still reaches the file at least once every two seconds
         // once the previous I/O completes. Always flush the final queued change.
-        if(pending.current===1||preferLocal||Date.now()-lastQueuedFileWrite.current>=2000){
-          await writeLinked(merged,preferLocal);
+        if((preferLocal||Date.now()>=fileRetryAfter.current)&&(pending.current===1||preferLocal||Date.now()-lastQueuedFileWrite.current>=2000)){
+          await writeLinkedNonBlocking(merged,preferLocal);
           lastQueuedFileWrite.current=Date.now();
         }
       });
     }).catch(e=>{if(!localCommitted)acknowledged.current=base;fail(e);}).finally(()=>{
       pending.current--;
-      if(!pending.current&&!failed.current){try{const state=latest();install(state);acknowledged.current=state;setSaveError('');setConflicts([]);setSaveStatus('saved');}catch(e){fail(e);}}
+      if(!pending.current&&!failed.current){try{const state=latest();install(state);acknowledged.current=state;if(!fileWarning.current){setSaveError('');setConflicts([]);}setSaveStatus(fileWarning.current?'error':'saved');}catch(e){fail(e);}}
     });
     return queue.current;
   };
@@ -157,8 +172,8 @@ export default function App() {
       await withSharedWrite(navigator.locks,async()=>{
         // An edit may have been queued while this check waited for another tab.
         if(pending.current||failed.current)return;
-        await writeLinked(latest());
-        if(!pending.current){const state=latest();if(!equal(state,current.current))install(state);acknowledged.current=state;}
+        await writeLinkedNonBlocking(latest());
+        if(!pending.current){const state=latest();if(!equal(state,current.current))install(state);acknowledged.current=state;setSaveStatus(fileWarning.current?'error':'saved');}
       });
     }catch(e){fail(e);}finally{checkingFile.current=false;setFileReady(true);}
   };
@@ -188,14 +203,14 @@ export default function App() {
     if(!canEdit||busy)return;
     await queue.current;
     if(preferLocal&&!confirm('Vols aplicar els canvis d’aquesta pestanya als camps en conflicte? Es conservarà una còpia de la versió compartida.'))return;
-    failed.current=false;setSaveError('');setConflicts([]);
+    failed.current=false;fileRetryAfter.current=0;setSaveError('');setConflicts([]);
     if(preferLocal){try{await withSharedWrite(navigator.locks,async()=>{createRecoveryCopy(latest(),'Abans de resoldre un conflicte');});}catch(e){fail(e);return;}}
     await saveChange(acknowledged.current,current.current,preferLocal);
   };
   const discard=async()=>{
     if(!confirm('Vols descartar els canvis pendents d’aquesta pestanya i carregar la versió compartida? Pots descarregar-los abans en JSON.'))return;
     await queue.current;
-    try{const state=latest();install(state);acknowledged.current=state;failed.current=false;setBlocked(false);setSaveError('');setConflicts([]);setSaveStatus('saved');}catch(e){importFailed(e);}
+    try{const state=latest();install(state);acknowledged.current=state;failed.current=false;setBlocked(false);setSaveError(fileWarning.current);if(!fileWarning.current)setConflicts([]);setSaveStatus(fileWarning.current?'error':'saved');}catch(e){importFailed(e);}
   };
   const replaceState=async(value:unknown,reason:string)=>{
     if(!canEdit||failed.current){setActiveView('dades');return;}
@@ -242,7 +257,7 @@ export default function App() {
         await setFileSyncBase(handle,loaded);
         saveStateToLocalStorage(state);install(state);acknowledged.current=state;setBlocked(false);await writeLinked(state);
       });
-      await refreshFile();failed.current=false;setConflicts([]);setFileReady(true);setSaveError('');setSaveStatus('saved');
+      await refreshFile();fileWarning.current='';fileRetryAfter.current=0;failed.current=false;setConflicts([]);setFileReady(true);setSaveError('');setSaveStatus('saved');
     }catch(e){if(e instanceof ImportValidationError)importFailed(e);else fail(e);}finally{setBusy(false);}
   };
   const handleRegisterFileHandle=async()=>{
@@ -253,7 +268,7 @@ export default function App() {
   const handleReleaseFileHandle=async()=>{
     if(!canEdit)return;
     setBusy(true);
-    try{await queue.current;await withSharedWrite(navigator.locks,async()=>{await removeFileHandle();localStorage.setItem(FILE_LINK_KEY,'no');});await refreshFile();setSaveError('');}
+    try{await queue.current;await withSharedWrite(navigator.locks,async()=>{await removeFileHandle();localStorage.setItem(FILE_LINK_KEY,'no');});await refreshFile();fileWarning.current='';fileRetryAfter.current=0;if(!failed.current){setSaveError('');setConflicts([]);setSaveStatus(pending.current?'saving':'saved');}}
     catch(e){fail(e);}finally{setBusy(false);}
     // File failure can be retried against browser storage without discarding pending edits.
   };
@@ -377,12 +392,12 @@ export default function App() {
 
         {/* Core Router Body */}
         <main id="main-content-scroll" className="flex-1 p-8 overflow-y-auto max-w-7xl w-full mx-auto">
-          {activeView==='dades'?<DataManagement lastFileCheck={lastFileCheck} onCheckFile={()=>void checkFile()} onLoadLinked={()=>void connect(linkedFileHandle)} onDownloadLinked={async()=>{try{const h=await getFileHandle();if(h)triggerRawJsonDownload(await (await h.getFile()).text(),"fitxer_abans_de_resoldre.json");}catch(e){fail(e);}}} state={localState} onRemoveOrphan={removeOrphan} status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
+          {activeView==='dades'?<DataManagement browserSaved={!failed.current&&!blocked&&pending.current===0} lastFileCheck={lastFileCheck} onCheckFile={()=>void checkFile()} onLoadLinked={()=>void connect(linkedFileHandle)} onDownloadLinked={async()=>{try{const h=await getFileHandle();if(h)triggerRawJsonDownload(await (await h.getFile()).text(),"fitxer_abans_de_resoldre.json");}catch(e){fail(e);}}} state={localState} onRemoveOrphan={removeOrphan} status={saveStatus} linkedFileName={linkedFileName} availableName={availableHandle?.name} busy={busy} canEdit={canEdit} notices={notices} reviewed={reviewed} onReview={review} conflicts={conflicts} onRetry={()=>void retry()} onKeepLocal={()=>void retry(true)} onDiscard={()=>void discard()} onDownload={handleExportBackup} onForget={()=>void handleReleaseFileHandle()} onConnect={()=>void connect(availableHandle)} onKeepCurrent={()=>void connect(availableHandle,true)} onChooseFile={handleRegisterFileHandle} onRenew={()=>void renewPermission()} onOpenRecovery={openRecovery} copies={copies} onClearCopies={()=>void clearCopies()} onRestore={raw=>{try{void replaceState(parseImportJson(raw),'Abans de restaurar una còpia');}catch(e){importFailed(e);}}} onImport={()=>fileInputRef.current?.click()} onDownloadOriginal={()=>{const raw=readStoredRaw();if(raw)triggerRawJsonDownload(raw,'dades_originals.json');}}/>:<>
           {!canEdit&&<p>Mode consulta: el navegador no permet coordinar el desat entre pestanyes.</p>}
           {busy&&<p role="status">Operació de fitxer en curs…</p>}
           {!fileReady&&canEdit&&saveStatus!=='error'&&<p role="status">Comprovant les dades del fitxer abans d’editar…</p>}
-          {saveStatus==='error'&&<button className="ds-button text-rose-700" onClick={()=>setActiveView('dades')}>Desat pendent: obrir Dades i desat per resoldre’l</button>}
-          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||!fileReady||saveStatus==='error'}>
+          {saveStatus==='error'&&<button className="ds-button text-rose-700" onClick={()=>setActiveView('dades')}>{failed.current?'Desat pendent: obrir Dades i desat per resoldre’l':'Desat al navegador · fitxer pendent. Pots continuar treballant; consulta Dades i desat.'}</button>}
+          {blocked?<p role="alert">No es poden editar les dades fins a recuperar una còpia vàlida. Obre «Recuperació».</p>:identityConflicts(localState).length?<IdentityReview key={identityConflicts(localState)[0].id} state={localState} onResolve={next=>void replaceState(next,'Abans de resoldre un conflicte d’identitat')}/>:<div inert={busy||!canEdit||!fileReady||failed.current}>
           {activeView === 'horari' && (
             <HorariView 
               state={localState}

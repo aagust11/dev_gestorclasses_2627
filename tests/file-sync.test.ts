@@ -68,3 +68,38 @@ test('backup failure stops writes and commits',async()=>{
   const base=fixture(),local=structuredClone(base),remote=structuredClone(base);local.config.holidays=[{date:'2026-10-12',label:'Festa'}];remote.config.teacherProfile={fullName:'Docent',email:'a@example.com'};
   const {d,handle}=disk(remote),s=session();await assert.rejects(synchronizeFile(handle,local,base,{...s.options,backup:()=>{throw Error('quota');}}),/quota/);assert.equal(d.writes,0);assert.equal(s.current,undefined);
 });
+
+test('bookmark optional fields survive file verification without false external-change errors',async()=>{
+ const base=fixture();base.subjects=[{id:'s',name:'Tecnologia',students:[],isGeneral:false,color:'#123456',parentId:null}];
+ const local=structuredClone(base);
+ local.subjects[0].generalLinks=[{id:'link',label:'Full',url:'https://example.com',icon:'sheet',image:undefined,uicon:undefined}];
+ const {d,handle}=disk(base),s=session();
+ const saved=await synchronizeFile(handle,local,base,s.options);
+ assert.equal(saved.subjects[0].generalLinks![0].label,'Full');assert.equal(d.writes,1);
+ await synchronizeFile(handle,local,saved,s.options);assert.equal(d.writes,1);
+});
+test('continuous diary typing with omitted optional metadata saves every final character',async()=>{
+ let base:AppState=fixture();base.subjects=[{id:'s',name:'Tecnologia',students:[],isGeneral:false,color:'#123456',parentId:null}];
+ const {d,handle}=disk(base),s=session();
+ for(let i=1;i<=40;i++){
+ const local=structuredClone(base);
+ local.sessionLogs=[{id:'session',scheduleItemId:'slot',subjectId:'s',date:'2026-09-16',comments:'Text '.repeat(i),attendance:{},startTime:undefined,endTime:undefined,nextSessionNotes:undefined}];
+ base=await synchronizeFile(handle,local,base,s.options);
+ }
+ assert.equal(JSON.parse(d.raw).sessionLogs[0].comments,'Text '.repeat(40));
+});
+
+test('file failure followed by further local edits retries the latest complete text',async()=>{
+ const base=fixture();const {d,handle}=disk(base),s=session();
+ let browser=structuredClone(base);
+ browser.config.teacherProfile={fullName:'Primer text',email:''};
+ d.failClose=true;
+ await assert.rejects(synchronizeFile(handle,browser,base,s.options),/disk full/);
+ assert.equal(s.current,undefined);
+ browser.config.teacherProfile.fullName='Text complet escrit mentre el fitxer no estava disponible';
+ browser.subjects=[{id:'s',name:'Classe',students:[],isGeneral:false,color:'#123456',parentId:null,generalLinks:[{id:'l',label:'Nou enllaç',url:'https://example.com',image:undefined}]}];
+ d.failClose=false;
+ const result=await synchronizeFile(handle,browser,base,s.options);
+ assert.equal(result.config.teacherProfile.fullName,browser.config.teacherProfile.fullName);
+ assert.equal(JSON.parse(d.raw).subjects[0].generalLinks[0].label,'Nou enllaç');
+});
