@@ -42,6 +42,7 @@ import {
 } from '../utils/dateHelpers';
 
 interface SessionViewProps {
+  onOpenStudent?: (id:string) => void;
   state: AppState;
   displayStart?: string;
   displayEnd?: string;
@@ -62,7 +63,8 @@ export default function SessionView({
   onBackToTimeline,
   onNavigateToSession,
   onChangeState,
-  onSaveSessionLog
+  onSaveSessionLog,
+  onOpenStudent
 }: SessionViewProps) {
   // General notes & links states for general teacher tasks
   const [studentSearch, setStudentSearch] = useState('');
@@ -609,7 +611,7 @@ export default function SessionView({
                                 {classroomName(student).substring(0, 2).toUpperCase()}
                               </span>
                               <span className="font-bold text-slate-800 truncate max-w-[150px] sm:max-w-[200px]" title={classroomName(student)}>
-                                <StudentName state={state} student={student}/>
+                                <StudentName state={state} student={student} onOpen={onOpenStudent}/>
                               </span>
                             </div>
                           </td>

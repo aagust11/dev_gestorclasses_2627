@@ -473,6 +473,7 @@ export default function App() {
                 setSelectedSessionDate(dt);
               }}
               onChangeState={triggerStateUpdate}
+              onOpenStudent={openStudent}
               onSaveSessionLog={(updatedLog) => {
                 // Find existing log
                 const filtered = localState.sessionLogs.filter(l => l.id !== updatedLog.id);
