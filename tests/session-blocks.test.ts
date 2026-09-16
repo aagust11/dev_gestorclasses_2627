@@ -1,3 +1,4 @@
+import {sessionIndicators} from '../src/utils/sessionIndicators';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
@@ -104,4 +105,29 @@ test('general daily diaries preserve legacy notes and remain isolated by day and
  const saved=storeBlockLog(state,block,date,merged);
  assert.equal(saved.sessionLogs.length,3);
  assert.ok(saved.sessionLogs.some(l=>l.id==='tomorrow'));assert.ok(saved.sessionLogs.some(l=>l.id==='other'));
+});
+
+test('timetable indicators distinguish empty, partial and complete attendance and diary text',()=>{
+ const state=fixture(),block=getDayBlocks(state,date)[0];
+ assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:false,recorded:0,total:1,complete:false});
+ state.sessionLogs=[{...log('b'),comments:'  ',nextSessionNotes:'Preparar',attendance:{p:{status:'pending',regularComments:['Comentari']}}}];
+ assert.equal(sessionIndicators(state,block,date).hasDiary,false);
+ assert.equal(sessionIndicators(state,block,date).recorded,0);
+ state.sessionLogs[0].attendance.p.status='absent';
+ assert.equal(sessionIndicators(state,block,date).complete,true);
+ state.subjects[0].students.push({id:'q',name:'Segon alumne'});
+ assert.equal(sessionIndicators(state,block,date).complete,false);
+ state.sessionLogs[0].attendance.q={status:'late10'};
+ state.sessionLogs[0].comments='Diari escrit';
+ assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,recorded:2,total:2,complete:true});
+ state.sessionLogs.push(log('a','present'));
+ assert.equal(sessionIndicators(state,block,date).recorded,1); // conflicting legacy attendance remains pending
+ assert.equal(sessionIndicators(state,block,'2026-09-21').recorded,0);
+});
+test('general action diary indicators appear in all daily slots without attendance',()=>{
+ const state=fixture();state.subjects[0].isGeneral=true;state.config.timeSlots[1].startTime='10:30';
+ state.sessionLogs=[log('a')];
+ for(const block of getDayBlocks(state,date))assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,recorded:0,total:0,complete:false});
+ state.sessionLogs[0].comments='';
+ assert.equal(sessionIndicators(state,getDayBlocks(state,date)[1],date).hasDiary,false);
 });
