@@ -8,6 +8,7 @@ import {noticeKey,reviewedNotices,reviewNotice} from './utils/noticePreferences'
 import DataManagement from './components/DataManagement';
 import {SHARED_STATE_KEY,FILE_LINK_KEY,recoveryRaw,removeRecoveryCopies,normalizeState} from './storage';
 import {prepareImportedState,triggerRawJsonDownload} from './storage';
+import {exemptExistingActivities} from './utils/studentEnrolment';
 import {syncStudentRegistry,identityConflicts} from './utils/studentIdentity';
 import {IdentityReview} from './components/IdentityReview';
 import {createRecoveryCopy,recoveryCopies,readStoredRaw} from './storage';
@@ -194,6 +195,7 @@ export default function App() {
     if(blocked||busy||!canEdit||!fileReady||failed.current)return false;
     const base=draftBase||current.current;
     if(equal(base,next))return true;
+    next=exemptExistingActivities(base,next);
     try{assertValidImport(next);}catch(e){setEditError('Canvi no desat: corregeix els camps indicats.');setEditIssues(e instanceof ImportValidationError?e.report.issues:[]);return false;}
     setEditError('');setEditIssues([]);
     const normalized=syncStudentRegistry(next);
@@ -491,3 +493,4 @@ export default function App() {
     </div>
   );
 }
+

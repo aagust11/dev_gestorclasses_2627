@@ -1,12 +1,12 @@
 import {AppState,CurricularActivity} from '../types';
-import {getActivityScore,getCriterionScore} from './gradeCalculations';
+import {activityIsEvaluated} from './gradeCalculations';
 import {toIsoDate} from './dateHelpers';
 export function resolveActivityStatus(state:AppState,activity:CurricularActivity,today=toIsoDate(new Date())){
   const subject=state.subjects.find(s=>s.id===activity.subjectId);
   const complete=(a:CurricularActivity,id:string)=>{
     if(a.grades?.[id]?.status==='exempt')return true;
     const owner=state.subjects.find(s=>s.id===a.subjectId);if(!owner)return false;
-    return a.criteriaIds?.length?a.criteriaIds.every(c=>getCriterionScore(a,id,c,owner)!==null):getActivityScore(a,id,owner)!==null;
+    return activityIsEvaluated(a,id,owner);
   };
   const enrolments=subject?.isParent?state.subjects.filter(s=>s.parentId===subject.id).flatMap(s=>s.students.map(student=>({student,subject:s}))):(subject?.students||[]).map(student=>({student,subject:subject!}));
   const gradedStudents=enrolments.filter(({student,subject:group})=>{
@@ -29,3 +29,4 @@ export function activitiesOverview(state:AppState,period='annual',today=toIsoDat
     return {subject,...counts,total:own.length,inherited:inherited.length};
   });
 }
+

@@ -1,3 +1,4 @@
+import {activitySummary,activityGradeLabel,filterActivitiesForPeriod} from './gradeCalculations';
 import {studentAttendance,attendanceLabels} from './attendance';
 import {studentSubjects} from './studentEnrolment';
 import {AppState, CalculationMode, TermStudentGrades} from '../types';
@@ -19,7 +20,8 @@ export function buildStudentReport(state:AppState,studentId:string) {
     const actual=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m)])) as Record<CalculationMode,TermStudentGrades>;
     const automatic=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m,true)])) as Record<CalculationMode,TermStudentGrades>;
     const competencies=state.competencies.filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>a.key.localeCompare(b.key,'ca',{numeric:true}));
-    return {subject,period,actual,automatic,competencies,comment:state.periodComments?.[subject.id]?.[period.id]?.[studentId]||''};
+    const activities=filterActivitiesForPeriod(state.activities||[],subject.id,period.id,state.config.terms);
+    return {activitySummary:activitySummary(activities,studentId,subject),activities:activities.map(a=>({code:a.code,title:a.title,date:a.endDate,result:activityGradeLabel(a,studentId,subject),comment:a.grades?.[studentId]?.comment||''})),subject,period,actual,automatic,competencies,comment:state.periodComments?.[subject.id]?.[period.id]?.[studentId]||''};
   });});
   const history=studentSessionHistory(state,studentId);
   const attendance=studentAttendance(state,studentId);
@@ -32,7 +34,9 @@ export function reportSections(report:StudentReport) {
   for(const id of [...new Set(report.evaluations.map(e=>e.subject.id))]){
     const evaluations=report.evaluations.filter(e=>e.subject.id===id);
     const name=evaluations[0].subject.name;
-    sections.push({title:`Notes · ${name}`,headers:['Període',...reportMethods.map(m=>reportMethodNames[m]),'Comentari'],rows:evaluations.map(e=>[`${e.period.name} (/${e.subject.evaluationType==='numeric'?10:4})`,...reportMethods.map(m=>comparedGradeText(e.actual[m]?.finalGrade,e.automatic[m]?.finalGrade)),e.comment])});
+    sections.push({title:`Notes · ${name}`,headers:['Període',...reportMethods.map(m=>reportMethodNames[m]),'NP / avaluades','Fet / No fet','Comentari'],rows:evaluations.map(e=>[`${e.period.name} (/${e.subject.evaluationType==='numeric'?10:4})`,...reportMethods.map(m=>comparedGradeText(e.actual[m]?.finalGrade,e.automatic[m]?.finalGrade)),`${e.activitySummary.np} / ${e.activitySummary.evaluated}`,`${e.activitySummary.done} / ${e.activitySummary.notDone}`,e.comment])});
+    const annual=evaluations.find(e=>e.period.id==='annual');
+    if(annual?.activities.length)sections.push({title:`Activitats · ${name}`,headers:['Activitat','Lliurament','Resultat','Comentari'],rows:annual.activities.map(a=>[`${a.code} · ${a.title}`,a.date,a.result,a.comment])});
     for(const e of evaluations)if(e.competencies.length)sections.push({title:`Competències · ${name} · ${e.period.name} (0–4)`,headers:['Competència',...reportMethods.map(m=>reportMethodNames[m])],rows:e.competencies.map(c=>[`${c.key} · ${c.description}`,...reportMethods.map(m=>comparedGradeText(e.actual[m]?.competencies[c.id],e.automatic[m]?.competencies[c.id]))])});
   }
   const statuses=attendanceLabels;
@@ -46,3 +50,4 @@ export function annualProposals(state:AppState,subject:import('../types').Subjec
   const score=available.length?available.reduce((n,t)=>n+t.actual.score,0)/available.length:null;
   return {terms,termScore:score,count:available.length,total:terms.length,fromActivities:studentPeriodGrade(state,subject,studentId,'annual',method,true)?.finalGrade};
 }
+

@@ -21,3 +21,17 @@ export function withdrawStudent(state:AppState,studentId:string,subjectId:string
     plans:canonical.plans.map(p=>p.subjectId===subjectId?{...p,seats:Object.fromEntries(Object.entries(p.seats).filter(([,id])=>id!==studentId))}:p),
   });
 }
+
+
+/** Applies only to new enrolments during an edit; never migrates or rewrites imported history. */
+export function exemptExistingActivities(previous:AppState,next:AppState):AppState{
+ const added=new Map(next.subjects.map(s=>[s.id,s.students.filter(st=>!previous.subjects.find(old=>old.id===s.id)?.students.some(x=>x.id===st.id)).map(st=>st.id)]));
+ const existing=new Set((previous.activities||[]).map(a=>a.id));
+ let changed=false;
+ const activities=next.activities?.map(a=>{
+  const ids=(added.get(a.subjectId)||[]).filter(id=>!Object.hasOwn(a.grades||{},id));
+  if(!existing.has(a.id)||!ids.length)return a;
+  changed=true;return {...a,grades:{...a.grades,...Object.fromEntries(ids.map(id=>[id,{status:'exempt' as const}]))}};
+ });
+ return changed?{...next,activities}:next;
+}

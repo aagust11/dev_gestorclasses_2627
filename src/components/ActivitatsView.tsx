@@ -1,3 +1,7 @@
+import NumericAspectsEditor from './NumericAspectsEditor';
+import {TestScoringFields} from './TestScoringFields';
+import {DEFAULT_TEST} from '../utils/testScoring';
+import {NumericAspect,TestScoring,AspectFormat} from '../types';
 import ActivitiesOverview from './ActivitiesOverview';
 import {resolveActivityStatus as resolveSharedActivityStatus} from '../utils/activityStatus';
 import { sourceCriterionId, preserveLegacyCriterionGrades } from '../utils/activityCriteria';
@@ -119,6 +123,10 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftBase,setDraftBase]=useState<AppState|null>(null);
 
+  const [assessmentType,setAssessmentType]=useState<'graded'|'completion'>('graded');
+  const [numericAspects,setNumericAspects]=useState<NumericAspect[]>([]);
+  const [criteriaTests,setCriteriaTests]=useState<Record<string,TestScoring>>({});
+  const [numericTest,setNumericTest]=useState<TestScoring>({...DEFAULT_TEST});
   const [activityCode, setActivityCode] = useState<string>('');
   const [activityTitle, setActivityTitle] = useState<string>('');
   const [activityDesc, setActivityDesc] = useState<string>('');
@@ -132,11 +140,11 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const [criteriaReferences, setCriteriaReferences] = useState<Record<string,string>>({});
   const [criteriaRubrics, setCriteriaRubrics] = useState<Record<string,RubricDescriptions>>({});
   const [criteriaWeights, setCriteriaWeights] = useState<Record<string, number>>({});
-  const [criteriaGradingType, setCriteriaGradingType] = useState<Record<string, 'competencial' | 'numeric'>>({});
+  const [criteriaGradingType, setCriteriaGradingType] = useState<Record<string, AspectFormat>>({});
   const [criteriaCustomLabels, setCriteriaCustomLabels] = useState<Record<string,string>>({});
   const [criteriaMaxScores, setCriteriaMaxScores] = useState<Record<string, number>>({});
   const [activityNumericItemId, setActivityNumericItemId] = useState<string>('');
-  const [activityNumericGradingType, setActivityNumericGradingType] = useState<'numeric' | 'competencial'>('numeric');
+  const [activityNumericGradingType, setActivityNumericGradingType] = useState<AspectFormat>('numeric');
   
   // Resources links list
   const [resources, setResources] = useState<ActivityResource[]>([]);
@@ -215,6 +223,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setDraftBase(null);
     setIsEditing(false);
     setEditingId(null);
+    setAssessmentType('graded');setNumericAspects([]);setCriteriaTests({});setNumericTest({...DEFAULT_TEST});
     setActivityCode('');
     setActivityTitle('');
     setActivityDesc('');
@@ -247,13 +256,14 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     e.preventDefault();
     if (!selectedSubId) return;
     if (activityEndDate < activityStartDate) { alert('El lliurament no pot ser anterior a l’inici.'); return; }
-    if (activeSubject?.evaluationType === 'numeric' && !activityNumericItemId) { alert('Selecciona l’ítem numèric de l’activitat.'); return; }
+    if (assessmentType!=='completion' && activeSubject?.evaluationType === 'numeric' && !activityNumericItemId) { alert('Selecciona l’ítem numèric de l’activitat.'); return; }
     if (!activityCode.trim() || !activityTitle.trim()) {
       alert('Siusplau, omple com a mínim el codi i el títol de l\'activitat.');
       return;
     }
 
     const nextActivity: CurricularActivity = {
+      ...existingActivities.find(a=>a.id===editingId),
       id: editingId || 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
       code: activityCode.toUpperCase().trim(),
       subjectId: selectedSubId,
@@ -265,6 +275,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       termId: state.config.terms.find(t => activityEndDate >= t.startDate && activityEndDate <= t.endDate)?.id || '',
       weight: Number(activityWeight) || 0,
       resources: resources,
+      assessmentType,numericAspects,criteriaTests:{...criteriaTests,...Object.fromEntries(selectedCritIds.filter(id=>criteriaGradingType[id]==='test').map(id=>[id,criteriaTests[id]||{...DEFAULT_TEST}]))},numericTest,
       criteriaIds: selectedCritIds,
       criteriaReferences,
       criteriaRubrics,
@@ -327,6 +338,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             criteriaGradingType: nextActivity.criteriaGradingType,
             criteriaMaxScores: nextActivity.criteriaMaxScores,
             numericItemId: nextActivity.numericItemId,
+            assessmentType:nextActivity.assessmentType,numericAspects:nextActivity.numericAspects,criteriaTests:nextActivity.criteriaTests,numericTest:nextActivity.numericTest,
             numericGradingType: nextActivity.numericGradingType
           };
         } else {
@@ -351,6 +363,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             criteriaGradingType: nextActivity.criteriaGradingType,
             criteriaMaxScores: nextActivity.criteriaMaxScores,
             numericItemId: nextActivity.numericItemId,
+            assessmentType:nextActivity.assessmentType,numericAspects:nextActivity.numericAspects,criteriaTests:nextActivity.criteriaTests,numericTest:nextActivity.numericTest,
             numericGradingType: nextActivity.numericGradingType,
             grades: {}
           };
@@ -395,6 +408,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     setIsEditing(true);
     setEditingId(act.id);
     setDraftBase(state);
+    setAssessmentType(act.assessmentType||'graded');setNumericAspects(structuredClone(act.numericAspects||[]));setCriteriaTests(structuredClone(act.criteriaTests||{}));setNumericTest({...DEFAULT_TEST,...act.numericTest});
     setActivityCode(act.code);
     setActivityTitle(act.title);
     setActivityDesc(act.description);
@@ -529,6 +543,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
                 <form onSubmit={handleSaveActivity} className="activity-editor-grid">
                   
+                  <label className="ds-field">Tipus d’avaluació<select value={assessmentType} onChange={e=>setAssessmentType(e.target.value as 'graded'|'completion')}><option value="graded">Amb nota</option><option value="completion">Fet / No fet</option></select><span className="text-xs text-slate-600">Fet / No fet apareix al seguiment i als informes, sense convertir-se en nota numèrica.</span></label>
                   {/* Activity Code */}
                   <div className="space-y-1">
                     <label className="block text-[10px] text-slate-500 font-bold uppercase tracking-wider">Codi ID d'Activitat</label>
@@ -705,7 +720,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   </div>
 
                   {/* NUMERIC EVALUATION SUBJECT SPECIFICS: Link to Subject Item */}
-                  {activeSubject?.evaluationType === 'numeric' && (
+                  {assessmentType==='graded' && activeSubject?.evaluationType === 'numeric' && (
                     <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl space-y-2">
                       <label className="block text-[10px] text-amber-900 font-bold uppercase tracking-wider">
                         Configuració Numèrica: Ítem Avaluatiu
@@ -715,7 +730,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                           <label className="text-[9.5px] text-slate-500 font-bold block mb-1">Assignar a Ítem:</label>
                           <select
                             value={activityNumericItemId}
-                            onChange={(e) => setActivityNumericItemId(e.target.value)}
+                            onChange={(e) => {setActivityNumericItemId(e.target.value);if(!numericAspects.length)setNumericAspects(structuredClone(activeSubject.numericItems?.find(i=>i.id===e.target.value)?.aspects||[]));}}
                             className="w-full text-xs font-bold p-1.5 border border-slate-250 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 cursor-pointer"
                           >
                             <option value="">-- Sense ítem assignat --</option>
@@ -728,29 +743,31 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                           <label className="text-[9.5px] text-slate-500 font-bold block mb-1">Format de Qualificació:</label>
                           <select
                             value={activityNumericGradingType}
-                            onChange={(e) => setActivityNumericGradingType(e.target.value as 'numeric' | 'competencial')}
+                            onChange={(e) => setActivityNumericGradingType(e.target.value as AspectFormat)}
                             className="w-full text-xs font-bold p-1.5 border border-slate-250 bg-white rounded-lg focus:ring-2 focus:ring-blue-500 cursor-pointer"
                           >
                             <option value="numeric">Numèric (0 - 10)</option>
-                            <option value="competencial">Competencial (NA, AS, AN, AE)</option>
+                            <option value="competencial">Competencial (NA, AS, AN, AE)</option><option value="test">Test</option>
                           </select>
                         </div>
                       </div>
+                      {activityNumericGradingType==='test'&&!numericAspects.length&&<TestScoringFields value={numericTest} onChange={setNumericTest}/>}
+                      <NumericAspectsEditor aspects={numericAspects} onChange={setNumericAspects}/>
                       <p className="text-[9px] text-amber-800">
                         La nota s'incorporarà al càlcul de la mitjana ponderada de l'ítem seleccionat.
                       </p>
                     </div>
                   )}
 
-                  <section className="space-y-2">
+                  {assessmentType==='graded'&&<section className="space-y-2">
                     <label className="ds-field" htmlFor="criterion-to-add">Afegir criteri d’avaluació</label>
                     <div className="flex gap-2"><select id="criterion-to-add" className="flex-1" value={criterionToAdd} onChange={e=>setCriterionToAdd(e.target.value)}><option value="">Selecciona un criteri…</option>{relevantCriteria.map(cr=><option key={cr.id} value={cr.id}>{cr.key} · {cr.description}</option>)}</select><button type="button" className="ds-button ds-primary" disabled={!criterionToAdd} onClick={handleAddCriterion}>Afegir</button></div>
                     <p className="text-sm text-slate-500">Pots afegir el mateix criteri diverses vegades per avaluar aspectes diferents. Cada entrada té la seva pròpia nota i pes.</p>
                     {!relevantCriteria.length && <p className="text-amber-700 text-sm">Crea primer els criteris a Configuració → Competències.</p>}
-                  </section>
+                  </section>}
 
                   {/* CRITERIA WEIGHTS AND GRADING TYPE CONFIGURATION */}
-                  {selectedCritIds.length > 0 && (
+                  {assessmentType==='graded' && selectedCritIds.length > 0 && (
                     <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
                       <label className="block text-[10px] text-slate-700 font-bold uppercase tracking-wider">
                         Pesos i Format dels Criteris Vinculats ({selectedCritIds.length})
@@ -799,12 +816,12 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                                     value={gType}
                                     onChange={(e) => setCriteriaGradingType({
                                       ...criteriaGradingType,
-                                      [cid]: e.target.value as 'competencial' | 'numeric'
+                                      [cid]: e.target.value as AspectFormat
                                     })}
                                     className="w-full text-[10.5px] font-bold p-1 border border-slate-200 rounded bg-slate-50/50 cursor-pointer"
                                   >
                                     <option value="competencial">NA-AE</option>
-                                    <option value="numeric">Numèric</option>
+                                    <option value="numeric">Numèric</option><option value="test">Test</option>
                                   </select>
                                 </div>
                                 <div>
@@ -828,6 +845,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                                   )}
                                 </div>
                               </div>
+                              {gType==='test'&&<TestScoringFields value={criteriaTests[cid]} onChange={test=>setCriteriaTests({...criteriaTests,[cid]:test})}/>}
                               <fieldset className="grid grid-cols-1 md:grid-cols-2 gap-2"><legend className="font-semibold text-sm mb-2">Què significa cada nivell en aquest aspecte?</legend>{QUAL_ORDER.map(q=><label className="ds-field" key={q}><span className={`grade-badge ${QUAL_COLORS[q].badge}`}>{q}</span><textarea rows={2} value={criteriaRubrics[cid]?.[q] ?? cr?.rubric?.[q] ?? ''} placeholder={`Descripció de ${q}…`} onChange={e=>setCriteriaRubrics({...criteriaRubrics,[cid]:{...criteriaRubrics[cid],[q]:e.target.value}})}/></label>)}</fieldset>
                             </div>
                           );
@@ -1321,3 +1339,4 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
     </div>
   );
 }
+

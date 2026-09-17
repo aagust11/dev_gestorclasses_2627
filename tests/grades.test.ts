@@ -109,7 +109,7 @@ test('Ítems numèrics ponderen activitats, percentatges, notes competencials i 
 test('Excel: els valors numèrics són números i cada alumne ocupa una fila',()=>{
   const s=sub(), a=act({criteriaCustomLabels:{ca1:'P1 · Expressió'},criteriaMaxScores:{ca1:20},grades:{u:{criteriaGrades:{ca1:{rawScore:13,maxScore:20}},comment:'Comentari únic'}}});
   const wb=buildActivitiesWorkbook(s,[a],criteria,s.students), rows=XLSX.utils.sheet_to_json<any[]>(wb.Sheets.Activitats,{header:1});
-  assert.equal(rows.length,4);assert.ok(rows[2].some(h=>String(h).includes('P1 · Expressió')));assert.equal(rows[3][2],13);assert.equal(rows[3][3],20);assert.equal(rows[3][4],2.6);assert.equal(rows[3].at(-1),'Comentari únic');
+  assert.equal(rows.length,4);assert.ok(rows[2].some(h=>String(h).includes('P1 · Expressió')));assert.equal(rows[3][rows[2].indexOf('P1 · P1 · Expressió · Puntuació')],13);assert.equal(rows[3][rows[2].indexOf('P1 · P1 · Expressió · Màxim')],20);assert.equal(rows[3][rows[2].indexOf('P1 · P1 · Expressió · Equivalent /4')],2.6);assert.equal(rows[3][rows[2].indexOf('P1 · Comentari')],'Comentari únic');
   const bytes=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});assert.equal(XLSX.read(bytes,{type:'buffer'}).SheetNames[0],'Activitats');
   const g=calc(s,[a]);const term=buildTermGradesWorkbook(s,'T1',criteria,comps,{u:g});const rs=XLSX.utils.sheet_to_json<any[]>(term.Sheets.Qualificacions,{header:1});assert.equal(rs[3][2],2.6);assert.equal(typeof rs[3][2],'number');
 });
@@ -134,7 +134,7 @@ test('Un CA repetit té notes, pesos i màxims independents i s’agrega al CA o
   const rows=XLSX.utils.sheet_to_json<any[]>(buildActivitiesWorkbook(s,[a],criteria,s.students).Sheets.Activitats,{header:1});
   assert.ok(rows[2].includes('P1 · Expressió oral · Puntuació'));
   assert.ok(rows[2].includes('P1 · Expressió escrita · Puntuació'));
-  assert.equal(rows[3][2],10);assert.equal(rows[3][6],'AE');
+  assert.equal(rows[3][rows[2].indexOf('P1 · Expressió oral · Puntuació')],10);assert.equal(rows[3][rows[2].indexOf('P1 · Expressió escrita · Puntuació')],'AE');
   a.criteriaIds.reverse();assert.equal(calc(s,[a]).criteria.ca1.score,3.5);
   a.criteriaIds=['first'];assert.equal(calc(s,[a]).criteria.ca1.score,2);
 });
@@ -181,10 +181,10 @@ test('Els comentaris del període persisteixen separats per assignatura i perío
     const grades=calculateCompetencialTermGrades(sub(),[act({grades:numericGrade(8)})],comps,criteria,undefined,method);
     const wb=buildTermGradesWorkbook(sub(),'T1',criteria,comps,grades,loaded.periodComments.s.t1);
     const rows=XLSX.utils.sheet_to_json<any[]>(wb.Sheets.Qualificacions,{header:1});
-    assert.equal(rows[2].at(-1),'Comentari del període');assert.equal(rows[3].at(-1),'Bon progrés');
+    assert.equal(rows[3][rows[2].indexOf('Comentari del període')],'Bon progrés');
   }
   const cleared=buildTermGradesWorkbook(sub(),'T1',criteria,comps,{},loaded.periodComments.s.t1);
-  assert.equal(XLSX.utils.sheet_to_json<any[]>(cleared.Sheets.Qualificacions,{header:1})[3].at(-1),'Bon progrés');
+  const clearedRows=XLSX.utils.sheet_to_json<any[]>(cleared.Sheets.Qualificacions,{header:1});assert.equal(clearedRows[3][clearedRows[2].indexOf('Comentari del període')],'Bon progrés');
 });
 
 test('NP imposa zero a tots els criteris i Exempt els exclou en els tres mètodes',()=>{
@@ -225,9 +225,9 @@ test('Excel i recàrrega preserven NP i Exempt sense exposar notes ignorades com
   for(const status of ['not_submitted','exempt'] as const){
     a.grades.u.status=status;
     const rows=XLSX.utils.sheet_to_json<any[]>(buildActivitiesWorkbook(s,[a],criteria,s.students).Sheets.Activitats,{header:1});
-    assert.equal(rows[3][2]??null,status==='not_submitted'?0:null);
-    assert.equal(rows[3][4]??null,status==='not_submitted'?0:null);
-    assert.equal(rows[3][5],status==='not_submitted'?'NP':'Exempt');
+    assert.equal(rows[3][rows[2].indexOf('P1 · CA1 · Puntuació')]??null,status==='not_submitted'?0:null);
+    assert.equal(rows[3][rows[2].indexOf('P1 · CA1 · Equivalent /4')]??null,status==='not_submitted'?0:null);
+    assert.equal(rows[3][rows[2].indexOf('P1 · CA1 · Qualificació')],status==='not_submitted'?'NP':'Exempt');
     const state=getInitialState();state.activities=[structuredClone(a)];
     const map=new Map<string,string>();Object.defineProperty(globalThis,'localStorage',{configurable:true,value:{setItem:(k:string,v:string)=>map.set(k,v),getItem:(k:string)=>map.get(k)}});
     saveStateToLocalStorage(state);assert.deepEqual(loadStateFromLocalStorage().activities,state.activities);
@@ -358,3 +358,4 @@ test('Rendiment mostra la nota d’activitats i no la puntuació històrica de s
  const render=(component:any,props:any)=>renderToStaticMarkup(createElement(component,props));
  const performance=render(RendimentView,{state}),grades=render(QualificacionsView,{state,onChangeState:()=>{}});assert.ok(performance.includes('3.20'));assert.ok(grades.includes('3.20'));assert.ok(performance.includes('Puntuacions històriques'));
 });
+

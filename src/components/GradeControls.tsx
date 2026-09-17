@@ -3,7 +3,8 @@ import { RubricDescriptions } from '../types';
 import { QUAL_COLORS, QUAL_ORDER } from '../utils/gradeCalculations';
 
 export function GradeBadge({qual,description}:{qual?:string;description?:string}) {
-  if(qual==='NP'||qual==='Exempt')return <span title={description} className={`grade-badge ${qual==='NP'?'bg-black text-white':'bg-slate-200 text-slate-700'}`}>{qual}</span>;
+  if(qual==='NP'||qual==='Exempt')return <span title={description} className={`grade-badge ${qual==='NP'?'bg-black text-white':'bg-yellow-100 text-yellow-900 border-yellow-300'}`}>{qual}</span>;
+  if(qual==='Fet'||qual==='No fet')return <span className={`grade-badge ${qual==='Fet'?'bg-emerald-100 text-emerald-800':'bg-rose-100 text-rose-800'}`}>{qual}</span>;
   const color=QUAL_COLORS[qual];
   return color ? <span title={description} className={`grade-badge ${color.badge}`}>{qual}</span> : <span className="text-slate-400">—</span>;
 }
@@ -18,3 +19,4 @@ export function GradeButtons({value,onChange,label,descriptions}:{value?:string;
       className={`grade-choice ${value===q?QUAL_COLORS[q].bg+' '+QUAL_COLORS[q].text:QUAL_COLORS[q].badge}`}>{q}</button>)}
   </div>;
 }
+

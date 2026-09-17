@@ -1,7 +1,7 @@
 import {AppState,Subject,CalculationMode} from '../types';
 import {periodGrades} from './gradeSelectors';
 import {subjectAttendance} from './attendance';
-import {getCompSettings,scoreToCompetencial} from './gradeCalculations';
+import {getCompSettings,scoreToCompetencial,activitySummary,activityGradeLabel,filterActivitiesForPeriod} from './gradeCalculations';
 import {comparedGradeText} from './studentReport';
 import {ReportDocument} from './reportDocument';
 export function classPeriodSummary(state:AppState,subject:Subject,periodId:string,method:CalculationMode){
@@ -15,12 +15,16 @@ export function buildClassReport(state:AppState,subject:Subject,periodId:string,
   const summary=classPeriodSummary(state,subject,periodId,method),attendance=subjectAttendance(state,subject,periodId);
   const periods=[...state.config.terms].sort((a,b)=>a.startDate.localeCompare(b.startDate)||a.endDate.localeCompare(b.endDate));
   const evolution=periods.map(t=>({term:t,data:classPeriodSummary(state,subject,t.id,method)}));
+  const activities=filterActivitiesForPeriod(state.activities||[],subject.id,periodId,state.config.terms);
+  const activityCounts=(id:string)=>{const s=activitySummary(activities,id,subject);return [`${s.np} / ${s.evaluated}`,`${s.done} / ${s.notDone}`];};
   const annual=classPeriodSummary(state,subject,'annual',method);
   const distribution=(s:typeof summary)=>(['AE','AN','AS','NA'] as const).map(q=>`${s.counts[q]} (${s.percentages[q].toFixed(1)}%)`);
   return {title:`Informe de grup · ${subject.name} · ${name}`,filename:`Informe_${subject.name}_${name}`,teacher:state.config.teacherProfile,intro:[`Mètode: ${{mean:'Mitjana',median:'Mediana',mode:'Moda'}[method]}. Alumnat actiu: ${summary.total}. NA: ${summary.counts.NA}. Sense nota: ${summary.pending}.`,`Percentatges sobre tot l’alumnat actiu (${summary.total}); les notes pendents no es compten com a NA. Es respecten les notes manuals.`,`L’evolució compara el mateix alumnat actiu actual en cada període. La preavaluació està inclosa en el primer trimestre: no és un trimestre addicional.`],sections:[
     {title:'Distribució de qualificacions',headers:['Total','AE','AN','AS','NA','Sense nota'],rows:[[String(summary.total),...distribution(summary),String(summary.pending)]]},
     {title:'Evolució per períodes',headers:['Període','AE','AN','AS','NA','Sense nota'],rows:[...evolution.map(({term,data})=>[term.name,...distribution(data),String(data.pending)]),['Curs',...distribution(annual),String(annual.pending)]]},
-    {title:'Seguiment individual del període',headers:['Alumne','Nota','Faltes','Retards','Comentari'],rows:subject.students.map(st=>[st.name,comparedGradeText(summary.grades[st.id]?.finalGrade,summary.automatic[st.id]?.finalGrade),String(attendance[st.id]?.absent||0),String(attendance[st.id]?.late||0),state.periodComments?.[subject.id]?.[periodId]?.[st.id]||''])},
+    {title:'Seguiment individual del període',headers:['Alumne','Nota','NP / avaluades','Fet / No fet','Faltes','Retards','Comentari'],rows:subject.students.map(st=>[st.name,comparedGradeText(summary.grades[st.id]?.finalGrade,summary.automatic[st.id]?.finalGrade),...activityCounts(st.id),String(attendance[st.id]?.absent||0),String(attendance[st.id]?.late||0),state.periodComments?.[subject.id]?.[periodId]?.[st.id]||''])},
+    ...activities.map(a=>({title:`Activitat · ${a.code} · ${a.title} (${a.endDate})`,headers:['Alumne','Resultat','Comentari'],rows:subject.students.map(st=>[st.name,activityGradeLabel(a,st.id,subject),a.grades?.[st.id]?.comment||''])})),
     {title:'Evolució individual',headers:['Alumne',...periods.map(t=>t.name),'Curs'],rows:subject.students.map(st=>[st.name,...evolution.map(e=>comparedGradeText(e.data.grades[st.id]?.finalGrade,e.data.automatic[st.id]?.finalGrade)),comparedGradeText(annual.grades[st.id]?.finalGrade,annual.automatic[st.id]?.finalGrade)])}
   ]};
 }
+

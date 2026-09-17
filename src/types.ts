@@ -64,7 +64,13 @@ export interface Student {
   preferredName?: string;
 }
 
+export interface TestScoring { questions:number; correct:number; blank:number; incorrect:number; }
+export interface TestAnswers { correct:number; blank:number; incorrect:number; }
+export type AspectFormat = 'numeric' | 'competencial' | 'test';
+export interface NumericAspect { id:string; label:string; weight:number; maxScore:number; format:AspectFormat; test?:TestScoring; }
+
 export interface SubjectNumericItem {
+  aspects?: NumericAspect[]; // Templates copied into activities, never live references.
   id: string;
   name: string;      // e.g. "Exàmens", "Pràctiques", "Projecte", "Treball Diari"
   code: string;      // e.g. "EXAM", "PRAC", "PROJ"
@@ -157,6 +163,7 @@ export interface ActivityResource {
 export type ActivityStatus = 'auto' | 'not_open' | 'open' | 'pending_correction' | 'corrected';
 
 export interface StudentCriterionGrade {
+  testAnswers?: TestAnswers;
   criterionId?: string;
   rawScore?: number; // valor introduït si és numèric (ex: 8 sobre max 10)
   competencialScore?: 'AE' | 'AN' | 'AS' | 'NA'; // qualificació si és competencial
@@ -165,6 +172,9 @@ export interface StudentCriterionGrade {
 }
 
 export interface StudentActivityGrade {
+  completion?: 'done' | 'not_done';
+  aspectGrades?: Record<string,StudentCriterionGrade>;
+  testAnswers?: TestAnswers;
   status?: 'not_submitted' | 'exempt'; // Overrides calculated scores without deleting entered grades
   score?: number; // nota global o numèrica de l'activitat
   competencialScore?: 'AE' | 'AN' | 'AS' | 'NA';
@@ -176,6 +186,10 @@ export interface StudentActivityGrade {
 }
 
 export interface CurricularActivity {
+  assessmentType?: 'graded' | 'completion';
+  numericAspects?: NumericAspect[];
+  criteriaTests?: Record<string,TestScoring>;
+  numericTest?: TestScoring;
   id: string;
   code: string; // e.g. "S3A4"
   subjectId: string;
@@ -192,12 +206,12 @@ export interface CurricularActivity {
   criteriaRubrics?: Record<string, RubricDescriptions>; // occurrence ID -> level descriptions
   // Configuració per criteri a l'activitat (pesos i tipus de puntuació):
   criteriaWeights?: Record<string, number>; // criterionId -> pes relatiu dins l'activitat (ex: 1, 2...)
-  criteriaGradingType?: Record<string, 'competencial' | 'numeric'>; // criterionId -> competencial o numèric
+  criteriaGradingType?: Record<string, AspectFormat>; // criterionId -> competencial o numèric
   criteriaMaxScores?: Record<string, number>; // criterionId -> puntuació màxima si és numèric (ex: 10)
   criteriaCustomLabels?: Record<string, string>; // criterionId -> text breu identificatiu d'avaluació (ex: "Expressió oral", "Ortografia")
   // Per a assignatures numèriques:
   numericItemId?: string; // Id de l'Item de l'assignatura al qual computa
-  numericGradingType?: 'numeric' | 'competencial'; // Com es puntua aquesta activitat
+  numericGradingType?: AspectFormat; // Com es puntua aquesta activitat
   // Notes dels alumnes
   grades?: Record<string, StudentActivityGrade>; // studentId -> grade
 }
@@ -268,3 +282,4 @@ export interface AppState {
   activities?: CurricularActivity[];
   termGradesRecords?: TermGradesRecord[];
 }
+

@@ -1,3 +1,4 @@
+import {testResult,DEFAULT_TEST} from './testScoring';
 import { sourceCriterionId } from './activityCriteria';
 /**
  * @license
@@ -189,8 +190,9 @@ export function filterActivitiesForPeriod(activities: CurricularActivity[], subj
 // Raw numeric scores take precedence over their cached qualitative equivalent.
 export function getCriterionScore(act: CurricularActivity, studentId: string, criterionId: string, subject: Subject): number | null {
   const settings = getCompSettings(subject), g = act.grades?.[studentId], cg = g?.criteriaGrades?.[criterionId];
-  if (g?.status === 'exempt') return null;
+  if (act.assessmentType==='completion'||g?.status === 'exempt') return null;
   if (g?.status === 'not_submitted') return 0;
+  if(act.criteriaGradingType?.[criterionId]==='test')return testResult(cg?.testAnswers,act.criteriaTests?.[criterionId]||DEFAULT_TEST)?.normalized??null;
   if (cg) {
     if (valid(cg.rawScore)) {
       const max = act.criteriaMaxScores?.[criterionId] ?? cg.maxScore ?? 10;
@@ -208,8 +210,10 @@ export function getCriterionScore(act: CurricularActivity, studentId: string, cr
 }
 
 export function getActivityScore(act: CurricularActivity, studentId: string, subject: Subject): number | null {
-  if (act.grades?.[studentId]?.status === 'exempt') return null;
+  if (act.assessmentType==='completion'||act.grades?.[studentId]?.status === 'exempt') return null;
   if (act.grades?.[studentId]?.status === 'not_submitted') return 0;
+  if(act.numericAspects?.length)return weightedStatistic(act.numericAspects.map(aspect=>({score:getAspectScore(act,studentId,aspect.id,subject),weight:aspect.weight})));
+  if(act.numericGradingType==='test'&&!act.criteriaIds?.length)return testResult(act.grades?.[studentId]?.testAnswers,act.numericTest||DEFAULT_TEST)?.normalized??null;
   if (act.criteriaIds?.length) {
     return weightedStatistic(act.criteriaIds.map(id => ({ score: getCriterionScore(act,studentId,id,subject), weight: act.criteriaWeights?.[id] ?? 1 })).filter(x => valid(x.score)));
   }
@@ -217,6 +221,33 @@ export function getActivityScore(act: CurricularActivity, studentId: string, sub
   if (act.numericGradingType === 'competencial' && g?.competencialScore) return settings.values[g.competencialScore];
   if (valid(g?.score)) return clamp(g.score/10*4);
   return g?.competencialScore ? settings.values[g.competencialScore] : null;
+}
+
+export function getAspectScore(act:CurricularActivity,studentId:string,id:string,subject:Subject):number|null {
+ const aspect=act.numericAspects?.find(a=>a.id===id),g=act.grades?.[studentId],grade=g?.aspectGrades?.[id];
+ if(!aspect||act.assessmentType==='completion'||g?.status==='exempt')return null;
+ if(g?.status==='not_submitted')return 0;
+ if(aspect.format==='test')return testResult(grade?.testAnswers,aspect.test||DEFAULT_TEST)?.normalized??null;
+ if(aspect.format==='competencial')return grade?.competencialScore?getCompSettings(subject).values[grade.competencialScore]:null;
+ return valid(grade?.rawScore)&&aspect.maxScore>0?clamp(grade.rawScore/aspect.maxScore*4):null;
+}
+export function activityIsEvaluated(act:CurricularActivity,studentId:string,subject:Subject):boolean {
+ const grade=act.grades?.[studentId];
+ if(grade?.status==='exempt')return false;
+ if(grade?.status==='not_submitted')return true;
+ if(act.assessmentType==='completion')return grade?.completion==='done'||grade?.completion==='not_done';
+ const checks=[...(act.criteriaIds||[]).map(id=>getCriterionScore(act,studentId,id,subject)),...(act.numericAspects||[]).map(a=>getAspectScore(act,studentId,a.id,subject))];
+ return checks.length?checks.every(n=>n!==null):getActivityScore(act,studentId,subject)!==null;
+}
+export function activitySummary(activities:CurricularActivity[],studentId:string,subject:Subject){
+ let evaluated=0,np=0,done=0,notDone=0,exempt=0;
+ for(const a of activities){const g=a.grades?.[studentId];if(g?.status==='exempt'){exempt++;continue;}if(!activityIsEvaluated(a,studentId,subject))continue;evaluated++;if(g?.status==='not_submitted')np++;else if(a.assessmentType==='completion'){if(g?.completion==='done')done++;else if(g?.completion==='not_done')notDone++;}}
+ return {evaluated,np,done,notDone,exempt};
+}
+export function activityGradeLabel(activity:CurricularActivity,studentId:string,subject:Subject){
+ const g=activity.grades?.[studentId];if(g?.status==='exempt')return 'Exempt';if(g?.status==='not_submitted')return 'NP';
+ if(activity.assessmentType==='completion')return g?.completion==='done'?'Fet':g?.completion==='not_done'?'No fet':'Pendent';
+ const score=getActivityScore(activity,studentId,subject);return score===null?'Pendent':(score*(subject.evaluationType==='numeric'?2.5:1)).toFixed(2)+' · '+scoreToCompetencial(score,getCompSettings(subject).thresholds);
 }
 
 function computeCompetencial(subject: Subject, activities: CurricularActivity[], competencies: Competency[], criteria: EvalCriterion[], existing: Record<string,TermStudentGrades> | undefined, mode: CalculationMode) {
@@ -292,7 +323,7 @@ function workbook(title: string, headers: string[], rows: (string|number|null)[]
 const exportNumber=(n:unknown)=>valid(n)?round(n):null;
 const safeName=(s:string)=>s.replace(/[^a-zA-Z0-9À-ÿ_-]/g,'_').slice(0,90);
 
-export function buildTermGradesWorkbook(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}) {
+export function buildTermGradesWorkbook(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}, activities:CurricularActivity[] = []) {
   const numeric=subject.evaluationType==='numeric';
   const headers=['ID Alumne','Nom Alumne'];
   if(numeric)(subject.numericItems||[]).forEach(i=>headers.push(`${i.code} · ${i.name} (${i.weight}%)`));
@@ -301,7 +332,7 @@ export function buildTermGradesWorkbook(subject: Subject, periodName: string, cr
     competencies.forEach(c=>headers.push(`CE ${c.key} /4`,`CE ${c.key} · Qual.`));
     headers.push('CE suspeses','NA pel límit de CE');
   }
-  headers.push('Mitjana total','Mediana total','Moda total',`Nota final /${numeric?10:4}`,'Qualificació final','Nota final manual','Comentari del període');
+  headers.push('Mitjana total','Mediana total','Moda total',`Nota final /${numeric?10:4}`,'Qualificació final','Nota final manual','Comentari del període','NP','Activitats avaluades','Fet','No fet');
   const rows=subject.students.map(st=>{
     const g=grades[st.id],row:(string|number|null)[]=[st.id,st.name];
     if(numeric)(subject.numericItems||[]).forEach(i=>row.push(exportNumber(g?.items?.[i.id]?.score)));
@@ -311,36 +342,36 @@ export function buildTermGradesWorkbook(subject: Subject, periodName: string, cr
       row.push(g?.finalGrade.failedCECount??null,g?.finalGrade.autoFailed?'Sí':'');
     }
     row.push(exportNumber(g?.metrics?.mean),exportNumber(g?.metrics?.median),exportNumber(g?.metrics?.mode),exportNumber(g?.finalGrade.score),g?.finalGrade.qual||'',g?.finalGrade.isManual?'Sí':'',comments[st.id]||'');
+    const summary=activitySummary(activities,st.id,subject);row.push(summary.np,summary.evaluated,summary.done,summary.notDone);
     return row;
   });
   return workbook(`${subject.name} · ${periodName}`,headers,rows,'Qualificacions');
 }
-export function exportTermGradesToExcel(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}) {
-  XLSX.writeFile(buildTermGradesWorkbook(subject,periodName,criteria,competencies,grades,comments),`Qualificacions_${safeName(subject.name)}_${safeName(periodName)}.xlsx`);
+export function exportTermGradesToExcel(subject: Subject, periodName: string, criteria: EvalCriterion[], competencies: Competency[], grades: Record<string,TermStudentGrades>, comments: Record<string,string> = {}, activities:CurricularActivity[] = []) {
+  XLSX.writeFile(buildTermGradesWorkbook(subject,periodName,criteria,competencies,grades,comments,activities),`Qualificacions_${safeName(subject.name)}_${safeName(periodName)}.xlsx`);
 }
 export function buildActivitiesWorkbook(subject:Subject,activities:CurricularActivity[],criteria:EvalCriterion[],students:Subject['students']) {
-  const settings=getCompSettings(subject), headers=['ID Alumne','Nom Alumne'];
-  activities.forEach(a=>{
-    (a.criteriaIds||[]).forEach(id=>{
-      const c=criteria.find(c=>c.id===sourceCriterionId(a,id)),label=a.criteriaCustomLabels?.[id]||c?.key||id;
-      headers.push(`${a.code} · ${label} · Puntuació`,`${a.code} · ${label} · Màxim`,`${a.code} · ${label} /4`,`${a.code} · ${label} · Qual.`);
-    });
-    headers.push(`${a.code} · Global /${subject.evaluationType==='numeric'?10:4}`,`${a.code} · Qual.`,`${a.code} · Comentari`);
-  });
+  const headers=['ID Alumne','Nom Alumne','NP','Activitats avaluades','Fet','No fet'];
+  const slots=(a:CurricularActivity)=>a.assessmentType==='completion'?[]:[
+    ...(a.numericAspects||[]).map(x=>({id:x.id,label:x.label,aspect:true})),
+    ...(a.criteriaIds||[]).map(id=>({id,label:a.criteriaCustomLabels?.[id]||criteria.find(c=>c.id===sourceCriterionId(a,id))?.key||id,aspect:false}))
+  ];
+  const fields=['Puntuació','Màxim','Equivalent /4','Qualificació','Correctes','Blancs','Incorrectes'];
+  activities.forEach(a=>{slots(a).forEach(slot=>fields.forEach(field=>headers.push(`${a.code} · ${slot.label} · ${field}`)));headers.push(`${a.code} · Global /${subject.evaluationType==='numeric'?10:4}`,`${a.code} · Resultat`,`${a.code} · Comentari`,`${a.code} · Correctes globals`,`${a.code} · Blancs globals`,`${a.code} · Incorrectes globals`);});
   const rows=students.map(st=>{
-    const row:(string|number|null)[]=[st.id,st.name];
+    const summary=activitySummary(activities,st.id,subject),row:(string|number|null)[]=[st.id,st.name,summary.np,summary.evaluated,summary.done,summary.notDone];
     activities.forEach(a=>{
-      const status=a.grades?.[st.id]?.status, statusLabel=status==='not_submitted'?'NP':status==='exempt'?'Exempt':'';
-      (a.criteriaIds||[]).forEach(id=>{
-        const cg=a.grades?.[st.id]?.criteriaGrades?.[id],score=getCriterionScore(a,st.id,id,subject);
-        row.push(status ? (status==='not_submitted'?0:null) : valid(cg?.rawScore)?cg.rawScore:cg?.competencialScore||null,valid(cg?.rawScore)?a.criteriaMaxScores?.[id]??cg.maxScore??10:null,exportNumber(score),statusLabel || (score===null?'':scoreToCompetencial(score,settings.thresholds)));
+      const g=a.grades?.[st.id],status=g?.status,qual=status==='not_submitted'?'NP':status==='exempt'?'Exempt':'';
+      slots(a).forEach(slot=>{
+        const aspect=a.numericAspects?.find(x=>x.id===slot.id),cg=slot.aspect?g?.aspectGrades?.[slot.id]:g?.criteriaGrades?.[slot.id];
+        const score=slot.aspect?getAspectScore(a,st.id,slot.id,subject):getCriterionScore(a,st.id,slot.id,subject);
+        const answers=status?undefined:cg?.testAnswers,result=testResult(answers,(slot.aspect?aspect?.test:a.criteriaTests?.[slot.id])||DEFAULT_TEST);
+        row.push(status?(status==='not_submitted'?0:null):result?.score??cg?.rawScore??cg?.competencialScore??null,result?.max??(cg?.rawScore!=null?(aspect?.maxScore??a.criteriaMaxScores?.[slot.id]??cg.maxScore??10):null),exportNumber(score),qual||(score===null?'Pendent':scoreToCompetencial(score,getCompSettings(subject).thresholds)),answers?.correct??null,answers?.blank??null,answers?.incorrect??null);
       });
-      const score=getActivityScore(a,st.id,subject);
-      row.push(score===null?null:round(score*(subject.evaluationType==='numeric'?2.5:1)),statusLabel || (score===null?'':scoreToCompetencial(score,settings.thresholds)),a.grades?.[st.id]?.comment||'');
-    });
-    return row;
-  });
-  return workbook(`${subject.name} · Notes de les activitats`,headers,rows,'Activitats');
+      const globalScore=getActivityScore(a,st.id,subject);
+      row.push(globalScore===null?null:round(globalScore*(subject.evaluationType==='numeric'?2.5:1)),activityGradeLabel(a,st.id,subject),g?.comment||'',status?null:g?.testAnswers?.correct??null,status?null:g?.testAnswers?.blank??null,status?null:g?.testAnswers?.incorrect??null);
+    });return row;
+  });return workbook(`${subject.name} · Notes de les activitats`,headers,rows,'Activitats');
 }
 export function exportActivitiesToExcel(subject: Subject, activities: CurricularActivity[], criteria: EvalCriterion[], students: Subject['students']) {
   XLSX.writeFile(buildActivitiesWorkbook(subject,activities,criteria,students),`Activitats_${safeName(subject.name)}.xlsx`);
@@ -355,3 +386,4 @@ export function calculateSubjectMode(subject:Subject,activities:CurricularActivi
   for(const id of Object.keys(numeric)){numeric[id].criteria=competency[id].criteria;numeric[id].competencies=competency[id].competencies;}
   return numeric;
 }
+
