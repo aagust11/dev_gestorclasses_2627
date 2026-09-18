@@ -22,7 +22,7 @@ const time:Check=(v,p,e)=>{if(typeof v!=='string'||(v!==''&&!/^([01]\d|2[0-3]):[
 const level=enumeration('NA','AS','AN','AE');
 const rubric=object({NA:text,AS:text,AN:text,AE:text});
 const student=object({id,name:text,preferredName:text},['id','name']);
-const profile=object({notes:text,psi:text,supportMeasures:text,additionalComments:text});
+const profile=object({internalNotes:text,notes:text,psi:text,supportMeasures:text,additionalComments:text});
 const grade=object({score:nullable(number(0,10)),qual:enumeration('','NA','AS','AN','AE'),isManual:bool,failedCECount:number(0,Infinity,true),autoFailed:bool},['score']);
 const testConfig:Check=(v,p,e)=>{object({questions:number(1,100000,true),correct:number(Number.MIN_VALUE),blank:number(),incorrect:number()},['questions','correct','blank','incorrect'])(v,p,e);if(record(v)&&!validTestConfig(v))e(p,'Test invàlid: màxim positif i cap resposta pot valer més que una correcta.');};
 const testAnswers=object({correct:number(0,100000,true),blank:number(0,100000,true),incorrect:number(0,100000,true)},['correct','blank','incorrect']);
