@@ -3,12 +3,13 @@ import {AppState,Student} from '../types';
 import DetailPage from './DetailPage';
 
 export type DeleteStudentAction=(id:string,name:string,reviewed:AppState)=>Promise<void>;
-export default function DeleteStudentControl({state,student,onDelete}:{state:AppState;student:Student;onDelete:DeleteStudentAction}){
+export default function DeleteStudentControl({state,student,onDelete,compact=false}:{state:AppState;student:Student;onDelete:DeleteStudentAction;compact?:boolean}){
   const [reviewed,setReviewed]=useState<AppState|null>(null);
   const [name,setName]=useState('');
   const [working,setWorking]=useState(false);
   const [error,setError]=useState('');
   const remove=async()=>{if(!reviewed||name!==student.name||working)return;setWorking(true);setError('');try{await onDelete(student.id,name,reviewed);}catch(e){setError((e as Error).message);setWorking(false);}};
+  if(!reviewed&&compact)return <button type="button" className="text-xs text-rose-700 hover:underline" onClick={()=>{setReviewed(state);setName('');setError('');}}>Eliminar alumne</button>;
   if(!reviewed)return <section className="ds-panel border-rose-200"><h3 className="font-bold">Eliminar l’alumne</h3><p className="text-sm my-2">Elimina la fitxa i tots els registres individuals de totes les assignatures.</p><button className="ds-button text-rose-700" onClick={()=>{setReviewed(state);setName('');setError('');}}>Revisar l’eliminació completa</button></section>;
   const id=student.id;
   const counts=[['Matrícules',reviewed.subjects.filter(s=>s.students.some(st=>st.id===id)).length],['Registres de sessió',reviewed.sessionLogs.filter(l=>Object.hasOwn(l.attendance,id)).length],['Activitats amb qualificació o comentari',(reviewed.activities||[]).filter(a=>Object.hasOwn(a.grades||{},id)).length],['Registres de notes de trimestre / curs',(reviewed.termGradesRecords||[]).filter(r=>Object.hasOwn(r.students,id)).length],['Comentaris de període',Object.values(reviewed.periodComments||{}).reduce((n,periods)=>n+Object.values(periods).filter(p=>Object.hasOwn(p,id)).length,0)]];
@@ -19,3 +20,4 @@ export default function DeleteStudentControl({state,student,onDelete}:{state:App
     <div className="flex gap-2"><button className="ds-button" disabled={working} onClick={()=>setReviewed(null)}>Cancel·lar</button><button className="ds-button text-rose-700" disabled={working||name!==student.name} onClick={()=>void remove()}>{working?'Eliminant…':'Eliminar l’alumne i tots els seus registres'}</button></div>{error&&<p role="alert" className="text-rose-700">{error}</p>}</div>
   </DetailPage></div>;
 }
+
