@@ -3,7 +3,7 @@ import {classroomName,searchableStudentName} from '../utils/studentNames';
 import {SortButton,sortRows,useTableSort} from './TableSort';
 import DeleteStudentControl,{DeleteStudentAction} from './DeleteStudentControl';
 import {IdentityMerge} from './IdentityReview';
-import {studentSubjects,withdrawStudent} from '../utils/studentEnrolment';
+import {studentSubjects,withdrawStudent,enrolStudent} from '../utils/studentEnrolment';
 import {studentAttendance,attendanceLabels} from '../utils/attendance';
 import StudentName from './StudentName';
 import React, {useState, useMemo} from 'react';
@@ -37,10 +37,21 @@ function StudentPage({state,student,onChange,onBack,onSession,onDelete}:{state:A
   const [exporting,setExporting]=useState(false);
   const [exportError,setExportError]=useState('');
   const [enrolmentMessage,setEnrolmentMessage]=useState('');
+  const [enrolSubjectId,setEnrolSubjectId]=useState('');
+  const availableSubjects=state.subjects.filter(s=>!s.isGeneral&&!s.isParent&&!s.students.some(st=>st.id===student.id)).sort((a,b)=>a.name.localeCompare(b.name,'ca',{numeric:true}));
+  const enrol=()=>{
+    const subject=availableSubjects.find(s=>s.id===enrolSubjectId);
+    if(!subject){setEnrolmentMessage('Selecciona una assignatura disponible.');return;}
+    try{
+      const accepted=onChange(enrolStudent(state,student.id,subject.id),state);
+      if(accepted===false){setEnrolmentMessage('No s’ha pogut aplicar la matrícula. Revisa l’avís de desat i torna-ho a provar.');return;}
+      setEnrolSubjectId('');setEnrolmentMessage(`Matrícula a ${subject.name} afegida. Les activitats prèvies sense registre han quedat exemptes; les notes anteriors es conserven.`);
+    }catch(e){setEnrolmentMessage((e as Error).message);}
+  };
   const withdraw=(id:string)=>{
     const subject=state.subjects.find(s=>s.id===id);
     if(!subject||!confirm(`Donar de baixa ${student.name} de ${subject.name}? Deixarà de sortir als llistats, avaluacions i plànols d’aquesta assignatura. Es conservaran la fitxa, les notes, els comentaris i l’històric de sessions. Les altres assignatures no canviaran.`))return;
-    try{const accepted=(onChange as (s:AppState)=>boolean|void)(withdrawStudent(state,student.id,id));if(accepted!==false)setEnrolmentMessage(`Baixa de ${subject.name} preparada per desar. Pots tornar a matricular l’alumne des de Configuració seleccionant-lo del catàleg existent.`);}catch(e){setEnrolmentMessage((e as Error).message);}
+    try{const accepted=(onChange as (s:AppState)=>boolean|void)(withdrawStudent(state,student.id,id));if(accepted!==false)setEnrolmentMessage(`Baixa de ${subject.name} preparada per desar. Pots tornar a matricular l’alumne des d’aquesta mateixa fitxa.`);}catch(e){setEnrolmentMessage((e as Error).message);}
   };
   const report=useMemo(()=>buildStudentReport(state,student.id),[state,student.id]);
   const exportReport=async(format:'word'|'pdf')=>{setExporting(true);setExportError('');try{await downloadStudentReport(report,format);}catch{setExportError('No s’ha pogut generar l’informe. Torna-ho a provar.');}finally{setExporting(false);}};
@@ -58,7 +69,7 @@ function StudentPage({state,student,onChange,onBack,onSession,onDelete}:{state:A
     <div className="space-y-4">
       <StudentNamesEditor state={state} student={student} onChange={onChange}/>
       {onDelete&&<DeleteStudentControl state={state} student={student} onDelete={onDelete}/>}
-      <section className="ds-panel space-y-2"><h3 className="font-bold">Matrícules actives</h3><p className="text-sm text-slate-600">La baixa afecta només l’assignatura escollida. L’històric es conserva a la fitxa, encara que l’alumne ja no tingui cap matrícula activa.</p>{activeSubjects.map(s=><div key={s.id} className="flex justify-between items-center gap-3 border-t py-2"><span>{s.name}</span><button className="ds-button text-rose-700" onClick={()=>withdraw(s.id)}>Donar de baixa d’aquesta assignatura</button></div>)}{!activeSubjects.length&&<p>Sense matrícules actives.</p>}{subjects.filter(s=>!activeSubjects.some(a=>a.id===s.id)).map(s=><p key={s.id} className="text-sm text-slate-500">{s.name} · Històric, sense matrícula activa</p>)}{enrolmentMessage&&<p role="status" className="text-sm">{enrolmentMessage}</p>}</section>
+      <section className="ds-panel space-y-2"><h3 className="font-bold">Matrícules actives</h3><div className="flex flex-wrap items-end gap-2"><label className="ds-field flex-1 min-w-48">Afegir a una assignatura<select value={availableSubjects.some(s=>s.id===enrolSubjectId)?enrolSubjectId:''} onChange={e=>{setEnrolSubjectId(e.target.value);setEnrolmentMessage('');}} disabled={!availableSubjects.length}><option value="">{availableSubjects.length?'Selecciona una assignatura…':'Ja és a totes les assignatures disponibles'}</option>{availableSubjects.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label><button type="button" className="ds-button ds-primary" disabled={!availableSubjects.some(s=>s.id===enrolSubjectId)} onClick={enrol}>Afegir alumne</button></div><p className="text-xs text-slate-600">S’utilitza la mateixa fitxa. Les activitats ja existents sense notes d’aquest alumne quedaran exemptes.</p><p className="text-sm text-slate-600">La baixa afecta només l’assignatura escollida. L’històric es conserva a la fitxa, encara que l’alumne ja no tingui cap matrícula activa.</p>{activeSubjects.map(s=><div key={s.id} className="flex justify-between items-center gap-3 border-t py-2"><span>{s.name}</span><button className="ds-button text-rose-700" onClick={()=>withdraw(s.id)}>Donar de baixa d’aquesta assignatura</button></div>)}{!activeSubjects.length&&<p>Sense matrícules actives.</p>}{subjects.filter(s=>!activeSubjects.some(a=>a.id===s.id)).map(s=><p key={s.id} className="text-sm text-slate-500">{s.name} · Històric, sense matrícula activa</p>)}{enrolmentMessage&&<p role="status" className="text-sm">{enrolmentMessage}</p>}</section>
       {exportError&&<p role="alert" className="text-rose-700">{exportError}</p>}
       <section className="ds-panel space-y-3"><h3 className="font-bold mb-2">Informació de l’alumne</h3><p className="text-sm text-slate-600 mb-2">{activeSubjects.length} grups / assignatures actives</p><label className="ds-field">Informació complementària · visible als informes<textarea rows={2} placeholder="Informació útil per al seguiment de l’alumne…" value={profile.notes||''} onChange={e=>saveProfile({notes:e.target.value})}/></label><label className="ds-field">Comentaris addicionals · visibles als informes<textarea rows={3} value={profile.additionalComments||''} onChange={e=>saveProfile({additionalComments:e.target.value})} placeholder="Comentaris addicionals per a l’informe de l’alumne…"/></label></section>
       <section className="ds-panel space-y-3"><div className="flex justify-between items-center gap-3"><h3 className="font-bold">PSI i mesures de suport</h3><button className="ds-button" aria-expanded={psiVisible} aria-controls="student-psi" onClick={()=>{setPsiVisible(v=>!v);}}>{psiVisible?<EyeOff size={16}/>:<Eye size={16}/>} {psiVisible?'Ocultar PSI i mesures':'Mostrar PSI i mesures'}</button></div>{psiVisible?<><label id="student-psi" className="ds-field">Contingut del PSI · desat automàtic<textarea rows={8} value={profile.psi||''} onChange={e=>saveProfile({psi:e.target.value})} placeholder="Objectius, mesures i suports, adaptacions i seguiment…"/></label><label className="ds-field">Mesures de suport<textarea rows={3} value={profile.supportMeasures||''} onChange={e=>saveProfile({supportMeasures:e.target.value})} placeholder="Mesures de suport que han de constar a l’informe…"/></label></>:<p className="text-sm text-slate-500">PSI i mesures ocults. Prem «Mostrar PSI i mesures» per consultar-los o editar-los.</p>}<p className="text-xs text-slate-500">Les mesures i els comentaris s’inclouen a l’informe si estan emplenats. El contingut del PSI es manté fora de l’informe.</p></section>

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {getInitialState} from '../src/initialState';
-import {withdrawStudent} from '../src/utils/studentEnrolment';
+import {withdrawStudent,enrolStudent} from '../src/utils/studentEnrolment';
 import {buildStudentReport} from '../src/utils/studentReport';
 import {studentAttendance} from '../src/utils/attendance';
 import {inspectImport} from '../src/utils/importValidation';
@@ -23,4 +23,24 @@ test('withdrawal retains identity, diary, grades and PSI after last enrolment an
 test('withdrawal only affects selected subject and its seating, keeps other enrolments',()=>{
   const s=fixture();s.subjects.push({...s.subjects[0],id:'other',name:'Altra assignatura'});s.plans=[{id:'p',subjectId:'s',seats:{'0,0':'u','0,1':'other-pupil'}},{id:'q',subjectId:'other',seats:{'0,0':'u'}}];
   const next=withdrawStudent(s,'u','s');assert.equal(next.subjects[1].students.length,1);assert.deepEqual(next.plans[0].seats,{'0,1':'other-pupil'});assert.deepEqual(next.plans[1].seats,{'0,0':'u'});assert.throws(()=>withdrawStudent(next,'u','s'),/ja no/);
+});
+
+
+
+test('profile enrolment reuses identity, exempts prior activities and prevents duplicates',()=>{
+ const s=fixture();s.subjects.push({...s.subjects[0],id:'other',name:'Tecnologia',students:[]});
+ s.activities.push({...s.activities[0],id:'other-a',subjectId:'other',grades:{}});
+ const next=enrolStudent(s,'u','other');
+ assert.equal(next.subjects[1].students[0].id,'u');assert.equal(next.subjects[1].students[0],next.studentRegistry!.u);
+ assert.deepEqual(next.enrolments!.other,['u']);assert.equal(next.activities![1].grades!.u.status,'exempt');
+ assert.equal(next.activities![0].grades!.u.score,8);assert.deepEqual(next.studentProfiles,s.studentProfiles);
+ assert.equal(s.subjects[1].students.length,0);assert.equal(enrolStudent(next,'u','other'),next);
+ assert.ok(inspectImport(JSON.parse(JSON.stringify(next))).valid);
+});
+test('re-enrolment preserves past grades and rejects missing or non-teaching targets',()=>{
+ const s=fixture(),withdrawn=withdrawStudent(s,'u','s'),next=enrolStudent(withdrawn,'u','s');
+ assert.equal(next.activities![0].grades!.u.score,8);assert.deepEqual(next.sessionLogs,s.sessionLogs);
+ assert.throws(()=>enrolStudent(next,'unknown','s'),/catàleg/);
+ assert.throws(()=>enrolStudent(next,'u','unknown'),/assignatura/);
+ for(const kind of ['isGeneral','isParent'])assert.throws(()=>enrolStudent({...withdrawn,subjects:withdrawn.subjects.map(s=>({...s,[kind]:true}))},'u','s'),/assignatura/);
 });

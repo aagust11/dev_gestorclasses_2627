@@ -35,3 +35,14 @@ export function exemptExistingActivities(previous:AppState,next:AppState):AppSta
  });
  return changed?{...next,activities}:next;
 }
+
+/** Reuse the canonical pupil and retain all existing history when enrolling. */
+export function enrolStudent(state:AppState,studentId:string,subjectId:string):AppState{
+ const canonical=syncStudentRegistry(state),student=canonical.studentRegistry?.[studentId];
+ const subject=canonical.subjects.find(s=>s.id===subjectId);
+ if(!student)throw Error('L’alumne ja no existeix al catàleg.');
+ if(!subject||subject.isGeneral||subject.isParent)throw Error('Selecciona una assignatura que admeti alumnat.');
+ if(subject.students.some(s=>s.id===studentId))return state;
+ const next={...canonical,subjects:canonical.subjects.map(s=>s.id===subjectId?{...s,students:[...s.students,student]}:s)};
+ return syncStudentRegistry(exemptExistingActivities(canonical,next));
+}
