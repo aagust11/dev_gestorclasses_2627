@@ -26,14 +26,21 @@ try{
  context.on('page',page=>{page.on('pageerror',e=>console.error('BROWSER ERROR',page.url(),e.message));page.on('console',m=>{if(m.type()==='error')console.error('CONSOLE',page.url(),m.text());});page.on('requestfailed',r=>console.error('REQUEST FAILED',r.url(),r.failure()));});
  const state=getInitialState(),now=new Date(),date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
  state.config={...state.config,startDate:date,endDate:date,holidays:[],substitutions:[],timeSlots:[{id:'slot',name:'Prova',startTime:'00:00',endTime:'23:59'}]};
- state.subjects=[{id:'subject',name:'Grup de prova',color:'#123456',parentId:null,students:[{id:'p',name:'Alumne Prova',preferredName:'Àlex'},{id:'q',name:'Segon Prova'}]}];
+ state.subjects=[{id:'subject',name:'Grup de prova',color:'#123456',parentId:null,students:[{id:'q',name:'Segon Prova'},{id:'p',name:'Alumne Prova',preferredName:'Àlex'}]}];
  state.studentRegistry=Object.fromEntries(state.subjects[0].students.map(s=>[s.id,s]));
  state.schedule=[{id:'session',subjectId:'subject',timeSlotId:'slot',dayOfWeek:now.getDay()}];state.sessionLogs=[];state.activities=[];state.competencies=[];state.criteria=[];
  state.studentProfiles={p:{psi:'SECRET_PSI',internalNotes:'SECRET_INTERNAL',supportMeasures:'SECRET_SUPPORT'}};
- await context.addInitScript(({state,origin})=>{if(location.origin===origin&&!localStorage.getItem('gestor_classes_app_state'))localStorage.setItem('gestor_classes_app_state',JSON.stringify(state));},{state,origin:new URL(APP).origin});
+ await context.addInitScript(({state,origin})=>{
+  if(location.origin!==origin)return;
+  if(!localStorage.getItem('gestor_classes_app_state'))localStorage.setItem('gestor_classes_app_state',JSON.stringify(state));
+  // Reproduce cold startup: content script exists before the app's message listener.
+  const native=window.addEventListener.bind(window);
+  window.addEventListener=(type,listener,options)=>{if(type==='message')setTimeout(()=>native(type,listener,options),3500);else native(type,listener,options);};
+ },{state,origin:new URL(APP).origin});
  let worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');const extensionId=new URL(worker.url()).host;
- const panel=await context.newPage();await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+ let panel=await context.newPage();await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
  await panel.getByRole('heading',{name:'Àlex',exact:true}).waitFor({timeout:40000});
+ assert.deepEqual(await panel.locator('article h2').allTextContents(),['Àlex','Segon Prova']);
  const pupil=panel.locator('article').filter({has:panel.getByRole('heading',{name:'Àlex',exact:true})});
  await pupil.getByRole('button',{name:'F',exact:true}).click();await panel.getByText('Desat',{exact:true}).waitFor();
  await panel.getByRole('button',{name:'Marcar pendents com a presents',exact:true}).click();await panel.getByText('Desat',{exact:true}).waitFor();
@@ -59,15 +66,26 @@ try{
  await app.reload();await app.locator('#nav-item-horari').waitFor();
  result=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'late10'});assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.warning,undefined,JSON.stringify(result));
  const file=await app.evaluate(async()=>JSON.parse(await(await(await(await navigator.storage.getDirectory()).getFileHandle('aula-test.json')).getFile()).text()));assert.equal(file.sessionLogs[0].attendance.p.status,'late10');
- // Closed app: a new operation must reopen invisibly, retain data and close safely.
- await app.close();result=await rpc('ADD_ANNOTATION',{date,sessionId:'session',studentId:'q',kind:'pos',text:'Àula tancada'});assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.warning,undefined);
- await new Promise(r=>setTimeout(r,6500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,0);
+ // Two editor tabs plus the extension: unrelated concurrent edits must both survive.
+ await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
+ const second=await context.newPage();await second.goto(APP);await second.locator('#nav-item-horari').waitFor();await rpc('GET_SESSION',{date,sessionId:'session'});
+ const [concurrent]=await Promise.all([rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'absent'}),app.locator('#attendance-lateMore10-q').click()]);
+ assert.equal(concurrent.ok,true,JSON.stringify(concurrent));
+ await app.waitForFunction(()=>{const s=JSON.parse(localStorage.getItem('gestor_classes_app_state'));return s.sessionLogs[0]?.attendance.p.status==='absent'&&s.sessionLogs[0]?.attendance.q.status==='lateMore10';});
+ await second.close();await app.close();
+ // Closed app: start invisibly, even with delayed listener, and keep engine while panel is used.
+ result=await rpc('ADD_ANNOTATION',{date,sessionId:'session',studentId:'q',kind:'pos',text:'Àula tancada'});assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.warning,undefined);
+ const hidden=await panel.evaluate(async()=> (await chrome.tabs.query({})).filter(t=>t.url?.includes('/dev_gestorclasses_2627/')).map(t=>({active:t.active,discardable:t.autoDiscardable})));
+ assert.deepEqual(hidden,[{active:false,discardable:false}]);
+ await new Promise(r=>setTimeout(r,5500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,1);
+ await panel.close();await new Promise(r=>setTimeout(r,6500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,0);
+ panel=await context.newPage();await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);await panel.getByRole('heading',{name:'Àlex',exact:true}).waitFor({timeout:55000});
  // Broken file link: browser commit succeeds but response warns and keeps auxiliary app.
  await rpc('GET_SESSION',{date,sessionId:'session'});app=context.pages().find(p=>p.url().startsWith(APP));assert.ok(app);
  await app.evaluate(async()=>{const db=await new Promise(resolve=>{const r=indexedDB.open('GestorClassesDB',1);r.onsuccess=()=>resolve(r.result);});await new Promise(resolve=>{const tx=db.transaction('handles','readwrite');tx.objectStore('handles').delete('active_file_handle');tx.oncomplete=resolve;});db.close();});
- result=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'q',status:'absent'});assert.equal(result.ok,true);assert.match(result.warning,/pendent/i);assert.equal(result.safeToClose,false);
+ result=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'q',status:'absent'});assert.equal(result.ok,true);assert.match(result.warning,/pendent/i);assert.equal(result.safeToClose,false);await panel.close();
  await new Promise(r=>setTimeout(r,6500));assert.ok(context.pages().some(p=>p.url().startsWith(APP)));
- console.log('PASS extension UI, auxiliary lifecycle, web ↔ extension, real handle write, file failure warning, privacy');
+ console.log('PASS cold startup with delayed listener, alphabetical pupils, hidden engine, multiple tabs, web ↔ extension, real file write, error recovery, privacy');
 }catch(e){fail=true;console.error(e);for(const p of context.pages())console.error('PAGE',p.url(),await p.locator('body').innerText().catch(()=>''));}
 finally{await context.close();await new Promise(resolve=>server.close(resolve));await rm(profile,{recursive:true,force:true});}
 if(fail)process.exit(1);

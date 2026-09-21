@@ -350,9 +350,15 @@ export default function App() {
   };
 
   const extensionHost=useRef<BridgeHost>(null!);
+  const lastExtensionFileCheck=useRef(0);
   extensionHost.current={
     getState:()=>current.current,
     warning:()=>fileWarning.current,
+    prepare:async()=>{
+      if(Date.now()-lastExtensionFileCheck.current>=FILE_POLL_MS&&pending.current===0){
+        lastExtensionFileCheck.current=Date.now();await checkFileRef.current();
+      }
+    },
     ready:()=>canEdit&&fileReady&&!blocked&&!busy&&!failed.current&&!checkingFile.current&&pending.current===0,
     safeToClose:()=>pending.current===0&&!checkingFile.current&&!failed.current&&!fileWarning.current&&!busy,
     openSession:handleSelectSessionFromGrid,
@@ -366,6 +372,7 @@ export default function App() {
   };
   useEffect(()=>installExtensionBridge({
     warning:()=>extensionHost.current.warning?.()||'',
+    prepare:()=>extensionHost.current.prepare?.()||Promise.resolve(),
     getState:()=>extensionHost.current.getState(),ready:()=>extensionHost.current.ready(),
     safeToClose:()=>extensionHost.current.safeToClose(),commit:(next,base)=>extensionHost.current.commit(next,base),
     openSession:(id,date)=>extensionHost.current.openSession(id,date)

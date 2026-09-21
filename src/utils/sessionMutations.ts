@@ -26,7 +26,8 @@ function resolve(state:AppState,target:SessionTarget){
 }
 export function getSessionSnapshot(state:AppState,target:SessionTarget){
   const {subject,log}=resolve(state,target);
-  const students=subject.isGeneral?[]:subject.students.map(st=>{
+  const collator=new Intl.Collator('ca',{sensitivity:'base',numeric:true});
+  const students=subject.isGeneral?[]:[...subject.students].sort((a,b)=>collator.compare(classroomName(a),classroomName(b))||collator.compare(a.name,b.name)||a.id.localeCompare(b.id)).map(st=>{
     const entry=log.attendance[st.id];
     return {id:st.id,name:classroomName(st),officialName:st.name,status:entry?.status||'pending',annotations: Object.fromEntries((['pos','regular','incident'] as const).map(k=>[k,entry?.[`${k}Comments`]??(entry?.[`${k}Comment`]?[entry[`${k}Comment`]]:[])]))};
   });

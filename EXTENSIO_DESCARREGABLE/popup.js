@@ -1,9 +1,10 @@
+import './connection.js';
 const $=id=>document.getElementById(id);
 let windowId;chrome.windows.getCurrent().then(w=>windowId=w.id);
 const rpc=(action,payload={})=>chrome.runtime.sendMessage({channel:'aula-ui',request:{version:1,requestId:crypto.randomUUID(),action,payload}});
 $('clock').textContent=new Date().toLocaleString('ca-ES',{dateStyle:'full',timeStyle:'short'});
 async function load(){try{
-  $('status').textContent='Connectant amb Àula…';const res=await rpc('GET_CONTEXT');if(!res.ok)throw Error(res.error);
+  $('status').textContent='Carregant dades en segon pla…';const res=await rpc('GET_CONTEXT');if(!res.ok)throw Error(res.error);
   $('current').replaceChildren();
   for(const session of res.data.current){const p=document.createElement('p');p.textContent=`${session.name} · ${session.startTime}–${session.endTime}`;$('current').append(p);
     const snap=await rpc('GET_SESSION',{date:session.date,sessionId:session.id});

@@ -1,15 +1,50 @@
 {
   "manifest_version": 3,
   "name": "Àula · Assistència i seguiment",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "minimum_chrome_version": "116",
   "description": "Passa llista i anota el seguiment des del lateral, amb el mateix desat d’Àula.",
-  "permissions": ["sidePanel", "contextMenus"],
-  "host_permissions": ["https://aagust11.github.io/*"],
-  "action": {"default_popup": "popup.html", "default_title": "Àula"},
-  "background": {"service_worker": "service-worker.js", "type": "module"},
-  "side_panel": {"default_path": "sidepanel.html"},
-  "content_scripts": [{"matches": ["https://aagust11.github.io/dev_gestorclasses_2627/*"], "js": ["content-script.js"], "run_at": "document_idle"}],
-  "icons": {"16":"icons/16.png","32":"icons/32.png","48":"icons/48.png","128":"icons/128.png"},
-  "commands": {"open-panel": {"suggested_key": {"default":"Alt+Shift+A"}, "description":"Obrir el seguiment d’Àula"}}
+  "permissions": [
+    "sidePanel",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "https://aagust11.github.io/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Àula"
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://aagust11.github.io/dev_gestorclasses_2627/*"
+      ],
+      "js": [
+        "content-script.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "commands": {
+    "open-panel": {
+      "suggested_key": {
+        "default": "Alt+Shift+A"
+      },
+      "description": "Obrir el seguiment d’Àula"
+    }
+  }
 }

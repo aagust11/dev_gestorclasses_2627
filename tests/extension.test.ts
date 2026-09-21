@@ -79,3 +79,13 @@ test('bridge rejects protocol/invalid input, reports save failures and soft file
  mode='error';const error=await dispatch(req('ADD_ANNOTATION',{...target,studentId:'p',kind:'pos',text:'Fail'}));assert.equal(error.ok,false);assert.equal(error.error,'Quota');
  assert.equal(state.sessionLogs[0].attendance.p.posComments,undefined);
 });
+
+test('extension students sort alphabetically by displayed name without changing the roster',()=>{
+ const state=fixture();state.subjects[0].students=[{id:'z',name:'Zoe'},{id:'b',name:'Bernat'},{id:'a',name:'Oficial',preferredName:'Àlex'}];
+ assert.deepEqual(getSessionSnapshot(state,target).students.map(s=>s.name),['Àlex','Bernat','Zoe']);assert.deepEqual(state.subjects[0].students.map(s=>s.id),['z','b','a']);
+});
+test('bridge refreshes the shared file before reading and responds with the refreshed state',async()=>{
+ let state=fixture(),prepared=false;
+ const dispatch=createExtensionDispatcher({getState:()=>state,ready:()=>true,safeToClose:()=>true,openSession:()=>{},commit:async()=>({}),prepare:async()=>{await new Promise(r=>setImmediate(r));state=setStudentAttendance(state,target,'p','absent');prepared=true;}});
+ const result=await dispatch(req('GET_SESSION',target));assert.equal(prepared,true);assert.equal((result.data as any).students[0].status,'absent');
+});

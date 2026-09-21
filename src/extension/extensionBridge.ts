@@ -2,7 +2,7 @@ import {AppState,StudentLog} from '../types';
 import {getCurrentClassContext,sessionsOnDate} from '../utils/currentClass';
 import {addStudentAnnotation,getSessionSnapshot,markAllPresent,markPendingStudentsPresent,setStudentAttendance,SessionTarget,AnnotationKind} from '../utils/sessionMutations';
 import {EXTENSION_PROTOCOL,REQUEST_CHANNEL,RESPONSE_CHANNEL,EVENT_CHANNEL,actions,ExtensionRequest,ExtensionResponse} from './extensionTypes';
-export type BridgeHost={getState:()=>AppState;ready:()=>boolean;commit:(next:AppState,base:AppState)=>Promise<{warning?:string}>;openSession:(id:string,date:string)=>void;safeToClose:()=>boolean;warning?:()=>string};
+export type BridgeHost={getState:()=>AppState;ready:()=>boolean;commit:(next:AppState,base:AppState)=>Promise<{warning?:string}>;openSession:(id:string,date:string)=>void;safeToClose:()=>boolean;warning?:()=>string;prepare?:()=>Promise<void>};
 const string=(value:unknown,max=200)=>{if(typeof value!=='string'||!value||value.length>max)throw Error('Paràmetre no vàlid.');return value;};
 export function createExtensionDispatcher(host:BridgeHost){
   const requests=new Map<string,{body:string;result:Promise<ExtensionResponse>}>();
@@ -16,6 +16,8 @@ export function createExtensionDispatcher(host:BridgeHost){
     const run=async():Promise<ExtensionResponse>=>{try{
       if(!actions.includes(request.action))throw Error('Operació desconeguda.');
       if(!host.ready())throw Error('Àula està iniciant-se o té un desat pendent/error. Obre Àula o torna-ho a provar.');
+      await host.prepare?.();
+      if(!host.ready())throw Error('El desat està ocupat. Torna-ho a provar quan acabi.');
       const state=host.getState(),p=request.payload||{};
       if(request.action==='GET_CONTEXT'){
         const context=getCurrentClassContext(state);
@@ -49,7 +51,12 @@ export function createExtensionDispatcher(host:BridgeHost){
 export function installExtensionBridge(host:BridgeHost){
   const dispatch=createExtensionDispatcher(host);
   const listener=(event:MessageEvent)=>{
-    if(event.source!==window||event.origin!==window.location.origin||event.data?.channel!==REQUEST_CHANNEL)return;
+    if(event.source!==window||event.origin!==window.location.origin)return;
+    if(event.data?.channel==='aula-extension-probe'){
+      if(typeof event.data.probeId==='string'&&event.data.probeId.length<=100)window.postMessage({channel:'aula-extension-probe-response',probeId:event.data.probeId,version:EXTENSION_PROTOCOL,ready:host.ready(),safeToClose:host.safeToClose()},window.location.origin);
+      return;
+    }
+    if(event.data?.channel!==REQUEST_CHANNEL)return;
     void dispatch(event.data.request).then(response=>window.postMessage({channel:RESPONSE_CHANNEL,response},window.location.origin));
   };
   window.addEventListener('message',listener);

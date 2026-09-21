@@ -1,3 +1,4 @@
+import './connection.js';
 const $=id=>document.getElementById(id),fold=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
 const now=new Date();$('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 let snapshot=null,busy=false,refreshTimer,hasError=false;
@@ -49,7 +50,7 @@ async function loadSession(passive=false){
   catch(e){hasError=true;status(e.message,true);}
 }
 async function load(){
-  if(busy)return;captureDrafts();const selectedDate=$('date').value;status('Carregant…');
+  if(busy)return;captureDrafts();const selectedDate=$('date').value;status('Carregant dades en segon pla…');
   try{const res=await rpc('GET_CONTEXT',{date:selectedDate});if(selectedDate!==$('date').value)return;if(!res.ok)throw Error(res.error);
     const old=$('session').value;$('session').replaceChildren();
     for(const s of res.data.sessions)$('session').add(new Option(`${s.startTime}–${s.endTime} · ${s.name}`,s.id));
