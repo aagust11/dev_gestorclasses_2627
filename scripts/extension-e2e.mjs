@@ -69,9 +69,10 @@ try{
  // Two editor tabs plus the extension: unrelated concurrent edits must both survive.
  await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
  const second=await context.newPage();await second.goto(APP);await second.locator('#nav-item-horari').waitFor();await rpc('GET_SESSION',{date,sessionId:'session'});
- const [concurrent]=await Promise.all([rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'absent'}),app.locator('#attendance-lateMore10-q').click()]);
+ const [concurrent]=await Promise.all([rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'absent'}),app.locator('#attendance-latemore10-q').click()]);
  assert.equal(concurrent.ok,true,JSON.stringify(concurrent));
  await app.waitForFunction(()=>{const s=JSON.parse(localStorage.getItem('gestor_classes_app_state'));return s.sessionLogs[0]?.attendance.p.status==='absent'&&s.sessionLogs[0]?.attendance.q.status==='lateMore10';});
+ await app.waitForFunction(async()=>{const root=await navigator.storage.getDirectory(),handle=await root.getFileHandle('aula-test.json'),s=JSON.parse(await(await handle.getFile()).text());return s.sessionLogs[0]?.attendance.p.status==='absent'&&s.sessionLogs[0]?.attendance.q.status==='lateMore10';});
  await second.close();await app.close();
  // Closed app: start invisibly, even with delayed listener, and keep engine while panel is used.
  result=await rpc('ADD_ANNOTATION',{date,sessionId:'session',studentId:'q',kind:'pos',text:'Àula tancada'});assert.equal(result.ok,true,JSON.stringify(result));assert.equal(result.warning,undefined);
