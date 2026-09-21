@@ -3,7 +3,7 @@ let auxiliary=null,closeTimer=null,badgeTimer=null,tail=Promise.resolve();
 const clients=new Set();
 let tabLookup=null;
 const readAction=action=>['GET_CONTEXT','GET_SESSION','OPEN_SESSION'].includes(action);
-const isApp=url=>{try{const u=new URL(url);return u.origin==='https://aagust11.github.io'&&u.pathname.startsWith('/dev_gestorclasses_2627/');}catch{return false;}};
+const isApp=url=>{try{const u=new URL(url);return u.origin==='https://aagust11.github.io'&&['/dev_gestorclasses_2627/','/dev_gestorclasses_2627/index.html'].includes(u.pathname);}catch{return false;}};
 const request=(action,payload={})=>({version:1,requestId:crypto.randomUUID(),action,payload});
 const send=(id,req)=>chrome.tabs.sendMessage(id,{channel:'aula-route',request:req});
 async function appTab(create=true){

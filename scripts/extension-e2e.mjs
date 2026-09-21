@@ -38,9 +38,11 @@ try{
   window.addEventListener=(type,listener,options)=>{if(type==='message')setTimeout(()=>native(type,listener,options),3500);else native(type,listener,options);};
  },{state,origin:new URL(APP).origin});
  let worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');const extensionId=new URL(worker.url()).host;
+ const downloadPage=await context.newPage();await downloadPage.goto(APP+'EXTENSIO_DESCARREGABLE/index.html');
  let panel=await context.newPage();await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);
  await panel.getByRole('heading',{name:'Àlex',exact:true}).waitFor({timeout:40000});
  assert.deepEqual(await panel.locator('article h2').allTextContents(),['Àlex','Segon Prova']);
+ await downloadPage.close();
  const pupil=panel.locator('article').filter({has:panel.getByRole('heading',{name:'Àlex',exact:true})});
  await pupil.getByRole('button',{name:'F',exact:true}).click();await panel.getByText('Desat',{exact:true}).waitFor();
  await panel.getByRole('button',{name:'Marcar pendents com a presents',exact:true}).click();await panel.getByText('Desat',{exact:true}).waitFor();
