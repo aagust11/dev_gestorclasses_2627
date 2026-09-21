@@ -9,7 +9,9 @@ const status=(text,error=false)=>{$('status').textContent=text;$('status').class
 const button=(text,fn)=>{const b=document.createElement('button');b.textContent=text;b.onclick=fn;return b;};
 function lock(value){busy=value;document.querySelectorAll('#students button,#students textarea,#students select,#all,#session,#date').forEach(e=>e.disabled=value);}
 async function mutate(action,extra={}){
-  if(busy||!snapshot)return false;lock(true);status('Desant…');
+  if(busy||!snapshot)return false;
+  if(snapshot.date!==$('date').value||snapshot.sessionId!==$('session').value){status('Espera que es carregui la sessió seleccionada.',true);return false;}
+  lock(true);status('Desant…');
   try{const res=await rpc(action,{...target(),...extra});if(!res.ok)throw Error(res.error);
     snapshot=res.data;hasError=false;render();status(res.warning||'Desat',!!res.warning);return true;
   }catch(e){hasError=true;status(e.message+' Obre Àula per comprovar-ho abans de repetir el canvi.',true);return false;}finally{lock(false);}
@@ -42,12 +44,13 @@ function render(){
 function filter(){const words=fold($('search').value).split(/\s+/).filter(Boolean);document.querySelectorAll('article').forEach(row=>row.hidden=!words.every(w=>row.dataset.search.includes(w)));}
 async function loadSession(passive=false){
   if(busy||!$('session').value||(passive&&document.activeElement?.matches('textarea,select,input')))return;
-  try{const res=await rpc('GET_SESSION',target(),passive);if(res.idle)return;if(!res.ok){if(passive)return;throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
+  const selected=target();
+  try{const res=await rpc('GET_SESSION',selected,passive);if(JSON.stringify(selected)!==JSON.stringify(target())||res.idle)return;if(!res.ok){if(passive)return;throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
   catch(e){hasError=true;status(e.message,true);}
 }
 async function load(){
-  if(busy)return;status('Carregant…');
-  try{const res=await rpc('GET_CONTEXT',{date:$('date').value});if(!res.ok)throw Error(res.error);
+  if(busy)return;captureDrafts();const selectedDate=$('date').value;status('Carregant…');
+  try{const res=await rpc('GET_CONTEXT',{date:selectedDate});if(selectedDate!==$('date').value)return;if(!res.ok)throw Error(res.error);
     const old=$('session').value;$('session').replaceChildren();
     for(const s of res.data.sessions)$('session').add(new Option(`${s.startTime}–${s.endTime} · ${s.name}`,s.id));
     if(res.data.sessions.some(s=>s.id===old))$('session').value=old;else if(res.data.current[0]&&res.data.date===$('date').value)$('session').value=res.data.current[0].id;
@@ -56,7 +59,7 @@ async function load(){
   }catch(e){hasError=true;status(e.message,true);}
 }
 $('all').onclick=()=>mutate(snapshot?.summary.recorded===0?'MARK_ALL_PRESENT':'MARK_PENDING_PRESENT');
-$('search').oninput=filter;$('date').onchange=load;$('session').onchange=()=>{captureDrafts();displayedTarget=null;snapshot=null;$('students').replaceChildren();loadSession();};$('retry').onclick=load;
+$('search').oninput=filter;$('date').onchange=()=>{captureDrafts();displayedTarget=null;snapshot=null;$('students').replaceChildren();$('summary').textContent='';$('all').hidden=true;load();};$('session').onchange=()=>{captureDrafts();displayedTarget=null;snapshot=null;$('students').replaceChildren();loadSession();};$('retry').onclick=load;
 $('open').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',open:true,payload:target()}).then(r=>{if(!r.ok)status(r.error,true);}).catch(e=>status(e.message,true));
 chrome.runtime.onMessage.addListener(message=>{if(message.channel==='aula-refresh'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>loadSession(true),500);}});
 // Passive refresh never creates a tab. Only an explicit user operation can do that.

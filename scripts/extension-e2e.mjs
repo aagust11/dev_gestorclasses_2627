@@ -11,11 +11,12 @@ const extension=path.resolve('EXTENSIO_DESCARREGABLE'),profile=await mkdtemp(pat
 const context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
 let fail=false;
 try{
+ context.on('page',page=>{page.on('pageerror',e=>console.error('BROWSER ERROR',page.url(),e.message));page.on('console',m=>{if(m.type()==='error')console.error('CONSOLE',page.url(),m.text());});page.on('requestfailed',r=>console.error('REQUEST FAILED',r.url(),r.failure()));});
  await context.route(APP+'**',async route=>{
   const relative=new URL(route.request().url()).pathname.slice('/dev_gestorclasses_2627/'.length)||'index.html';
   const filename=path.resolve('dist',relative);if(!filename.startsWith(path.resolve('dist')+path.sep))return route.abort();
   const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
-  try{await route.fulfill({body:await readFile(filename),contentType:types[path.extname(filename)]||'application/octet-stream'});}catch{await route.fulfill({status:404,body:'Not found'});}
+  try{await route.fulfill({body:await readFile(filename),contentType:types[path.extname(filename)]||'application/octet-stream'});}catch(e){console.error('MISSING ASSET',filename,e.message);await route.fulfill({status:404,body:'Not found'});}
  });
  const state=getInitialState(),now=new Date(),date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
  state.config={...state.config,startDate:date,endDate:date,holidays:[],substitutions:[],timeSlots:[{id:'slot',name:'Prova',startTime:'00:00',endTime:'23:59'}]};
