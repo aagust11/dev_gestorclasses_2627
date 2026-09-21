@@ -79,12 +79,13 @@ try{
  const hidden=await panel.evaluate(async()=> (await chrome.tabs.query({})).filter(t=>t.url?.includes('/dev_gestorclasses_2627/')).map(t=>({active:t.active,discardable:t.autoDiscardable})));
  assert.deepEqual(hidden,[{active:false,discardable:false}]);
  await new Promise(r=>setTimeout(r,5500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,1);
- await panel.close();await new Promise(r=>setTimeout(r,6500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,0);
+ await context.pages()[0].bringToFront();await panel.close();await new Promise(r=>setTimeout(r,6500));assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,0);
  panel=await context.newPage();await panel.goto(`chrome-extension://${extensionId}/sidepanel.html`);await panel.getByRole('heading',{name:'Àlex',exact:true}).waitFor({timeout:55000});
+ // Closing a real side panel leaves the browsing tab active; the test page simulates that explicitly.
  // Broken file link: browser commit succeeds but response warns and keeps auxiliary app.
  await rpc('GET_SESSION',{date,sessionId:'session'});app=context.pages().find(p=>p.url().startsWith(APP));assert.ok(app);
  await app.evaluate(async()=>{const db=await new Promise(resolve=>{const r=indexedDB.open('GestorClassesDB',1);r.onsuccess=()=>resolve(r.result);});await new Promise(resolve=>{const tx=db.transaction('handles','readwrite');tx.objectStore('handles').delete('active_file_handle');tx.oncomplete=resolve;});db.close();});
- result=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'q',status:'absent'});assert.equal(result.ok,true);assert.match(result.warning,/pendent/i);assert.equal(result.safeToClose,false);await panel.close();
+ result=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'q',status:'absent'});assert.equal(result.ok,true);assert.match(result.warning,/pendent/i);assert.equal(result.safeToClose,false);await context.pages()[0].bringToFront();await panel.close();
  await new Promise(r=>setTimeout(r,6500));assert.ok(context.pages().some(p=>p.url().startsWith(APP)));
  console.log('PASS cold startup with delayed listener, alphabetical pupils, hidden engine, multiple tabs, web ↔ extension, real file write, error recovery, privacy');
 }catch(e){fail=true;console.error(e);for(const p of context.pages())console.error('PAGE',p.url(),await p.locator('body').innerText().catch(()=>''));}
