@@ -1,23 +1,29 @@
 // Isolated Chromium profile; synthetic pupils only. No real repository/user data.
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {readFile,mkdtemp,rm} from 'node:fs/promises';
+import {readFile,mkdtemp,rm,cp,writeFile} from 'node:fs/promises';
+import {createServer} from 'node:http';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {getInitialState} from '../src/initialState.ts';
 const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
-const APP='https://aagust11.github.io/dev_gestorclasses_2627/';
-const extension=path.resolve('EXTENSIO_DESCARREGABLE'),profile=await mkdtemp(path.join(tmpdir(),'aula-extension-'));
-const context=await chromium.launchPersistentContext(profile,{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
+const profile=await mkdtemp(path.join(tmpdir(),'aula-extension-'));
+const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
+const server=createServer(async(req,res)=>{
+ const relative=new URL(req.url,'http://localhost').pathname.slice('/dev_gestorclasses_2627/'.length)||'index.html';
+ const filename=path.resolve('dist',relative);
+ if(!req.url.startsWith('/dev_gestorclasses_2627/')||!filename.startsWith(path.resolve('dist')+path.sep)){res.writeHead(404);res.end();return;}
+ try{res.setHeader('Content-Type',types[path.extname(filename)]||'application/octet-stream');res.end(await readFile(filename));}catch{res.writeHead(404);res.end();}
+});
+await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+const origin=`http://127.0.0.1:${server.address().port}`,APP=origin+'/dev_gestorclasses_2627/';
+// Only the deployment origin is substituted in an isolated test copy. All extension and app code is real.
+const extension=path.join(profile,'extension');await cp(path.resolve('EXTENSIO_DESCARREGABLE'),extension,{recursive:true});
+for(const file of ['manifest.json','service-worker.js']){const filename=path.join(extension,file);await writeFile(filename,(await readFile(filename,'utf8')).replaceAll('https://aagust11.github.io',origin));}
+const context=await chromium.launchPersistentContext(path.join(profile,'browser'),{channel:'chromium',headless:true,args:[`--disable-extensions-except=${extension}`,`--load-extension=${extension}`]});
 let fail=false;
 try{
  context.on('page',page=>{page.on('pageerror',e=>console.error('BROWSER ERROR',page.url(),e.message));page.on('console',m=>{if(m.type()==='error')console.error('CONSOLE',page.url(),m.text());});page.on('requestfailed',r=>console.error('REQUEST FAILED',r.url(),r.failure()));});
- await context.route(APP+'**',async route=>{
-  const relative=new URL(route.request().url()).pathname.slice('/dev_gestorclasses_2627/'.length)||'index.html';
-  const filename=path.resolve('dist',relative);if(!filename.startsWith(path.resolve('dist')+path.sep))return route.abort();
-  const types={'.js':'text/javascript','.css':'text/css','.html':'text/html','.svg':'image/svg+xml','.png':'image/png','.woff2':'font/woff2'};
-  try{await route.fulfill({body:await readFile(filename),contentType:types[path.extname(filename)]||'application/octet-stream'});}catch(e){console.error('MISSING ASSET',filename,e.message);await route.fulfill({status:404,body:'Not found'});}
- });
  const state=getInitialState(),now=new Date(),date=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
  state.config={...state.config,startDate:date,endDate:date,holidays:[],substitutions:[],timeSlots:[{id:'slot',name:'Prova',startTime:'00:00',endTime:'23:59'}]};
  state.subjects=[{id:'subject',name:'Grup de prova',color:'#123456',parentId:null,students:[{id:'p',name:'Alumne Prova',preferredName:'Àlex'},{id:'q',name:'Segon Prova'}]}];
@@ -63,5 +69,5 @@ try{
  await new Promise(r=>setTimeout(r,6500));assert.ok(context.pages().some(p=>p.url().startsWith(APP)));
  console.log('PASS extension UI, auxiliary lifecycle, web ↔ extension, real handle write, file failure warning, privacy');
 }catch(e){fail=true;console.error(e);for(const p of context.pages())console.error('PAGE',p.url(),await p.locator('body').innerText().catch(()=>''));}
-finally{await context.close();await rm(profile,{recursive:true,force:true});}
+finally{await context.close();await new Promise(resolve=>server.close(resolve));await rm(profile,{recursive:true,force:true});}
 if(fail)process.exit(1);
