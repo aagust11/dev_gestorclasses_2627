@@ -1,7 +1,7 @@
 import './connection.js';
 const $=id=>document.getElementById(id),fold=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
 const now=new Date();$('date').value=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-let snapshot=null,busy=false,refreshTimer,hasError=false;
+let snapshot=null,busy=false,refreshTimer,hasError=false,readSequence=0;
 const draftSessions=new Map();let displayedTarget=null;
 function captureDrafts(){if(!displayedTarget)return;draftSessions.set(displayedTarget,new Map([...$('students').querySelectorAll('article')].map(row=>[row.dataset.id,{text:row.querySelector('textarea').value,kind:row.querySelector('select').value,open:row.querySelector('details').open}])));}
 const rpc=(action,payload={},passive=false)=>chrome.runtime.sendMessage({channel:'aula-ui',passive,request:{version:1,requestId:crypto.randomUUID(),action,payload}});
@@ -12,7 +12,7 @@ function lock(value){busy=value;document.querySelectorAll('#students button,#stu
 async function mutate(action,extra={}){
   if(busy||!snapshot)return false;
   if(snapshot.date!==$('date').value||snapshot.sessionId!==$('session').value){status('Espera que es carregui la sessió seleccionada.',true);return false;}
-  lock(true);status('Desant…');
+  ++readSequence;lock(true);status('Desant…');
   try{const res=await rpc(action,{...target(),...extra});if(!res.ok)throw Error(res.error);
     snapshot=res.data;hasError=false;render();status(res.warning||'Desat',!!res.warning);return true;
   }catch(e){hasError=true;status(e.message+' Obre Àula per comprovar-ho abans de repetir el canvi.',true);return false;}finally{lock(false);}
@@ -45,8 +45,8 @@ function render(){
 function filter(){const words=fold($('search').value).split(/\s+/).filter(Boolean);document.querySelectorAll('article').forEach(row=>row.hidden=!words.every(w=>row.dataset.search.includes(w)));}
 async function loadSession(passive=false){
   if(busy||!$('session').value||(passive&&document.activeElement?.matches('textarea,select,input')))return;
-  const selected=target();
-  try{const res=await rpc('GET_SESSION',selected,passive);if(JSON.stringify(selected)!==JSON.stringify(target())||res.idle)return;if(!res.ok){if(passive)return;throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
+  const selected=target(),sequence=++readSequence;
+  try{const res=await rpc('GET_SESSION',selected,passive);if(busy||sequence!==readSequence||JSON.stringify(selected)!==JSON.stringify(target())||res.idle)return;if(!res.ok){if(passive)return;throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
   catch(e){hasError=true;status(e.message,true);}
 }
 async function load(){

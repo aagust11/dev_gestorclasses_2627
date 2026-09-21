@@ -89,3 +89,21 @@ test('bridge refreshes the shared file before reading and responds with the refr
  const dispatch=createExtensionDispatcher({getState:()=>state,ready:()=>true,safeToClose:()=>true,openSession:()=>{},commit:async()=>({}),prepare:async()=>{await new Promise(r=>setImmediate(r));state=setStudentAttendance(state,target,'p','absent');prepared=true;}});
  const result=await dispatch(req('GET_SESSION',target));assert.equal(prepared,true);assert.equal((result.data as any).students[0].status,'absent');
 });
+
+test('read and navigation remain available while a mutation is waiting for durable save',async()=>{
+ let state=fixture(),release:()=>void=()=>{},saving=false,opened=false;
+ const barrier=new Promise<void>(r=>release=r);
+ const dispatch=createExtensionDispatcher({getState:()=>state,ready:()=>!saving,readReady:()=>true,safeToClose:()=>!saving,warning:()=>saving?'Desant…':'',openSession:()=>{opened=true;},commit:async next=>{saving=true;state=next;await barrier;saving=false;return {};}});
+ const mutation=dispatch(req('SET_ATTENDANCE',{...target,studentId:'p',status:'absent'}));
+ await new Promise(r=>setImmediate(r));assert.equal(saving,true);
+ const snapshot=await dispatch(req('GET_SESSION',target));assert.equal(snapshot.ok,true);assert.equal(snapshot.warning,'Desant…');assert.equal(snapshot.safeToClose,false);
+ assert.equal((await dispatch(req('OPEN_SESSION',target))).ok,true);assert.equal(opened,true);
+ release();assert.equal((await mutation).ok,true);
+});
+test('opening a session for review does not require consistent attendance records',async()=>{
+ const state=fixture();state.sessionLogs=[{id:'1',scheduleItemId:'a',subjectId:'s',date,comments:'a',attendance:{p:{status:'present'}}},{id:'2',scheduleItemId:'b',subjectId:'s',date,comments:'b',attendance:{p:{status:'absent'}}}];
+ let opened=false;
+ const dispatch=createExtensionDispatcher({getState:()=>state,ready:()=>false,readReady:()=>true,safeToClose:()=>false,openSession:()=>{opened=true;},commit:async()=>{throw Error('No mutation expected');}});
+ assert.equal((await dispatch(req('OPEN_SESSION',target))).ok,true);assert.equal(opened,true);
+ assert.equal((await dispatch(req('SET_ATTENDANCE',{...target,studentId:'p',status:'present'}))).ok,false);
+});

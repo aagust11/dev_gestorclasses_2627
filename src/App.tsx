@@ -353,10 +353,14 @@ export default function App() {
   const lastExtensionFileCheck=useRef(0);
   extensionHost.current={
     getState:()=>current.current,
-    warning:()=>fileWarning.current,
-    prepare:async()=>{
+    warning:()=>fileWarning.current||(failed.current?'Hi ha canvis pendents de desar. Revisa «Dades i desat» a Àula.':pending.current?'Desant canvis…':checkingFile.current||!fileReady?'Dades del navegador · comprovant el fitxer…':''),
+    readReady:()=>canEdit&&!blocked&&!busy,
+    prepare:async(action)=>{
+      if(action==='OPEN_SESSION')return;
       if(Date.now()-lastExtensionFileCheck.current>=FILE_POLL_MS&&pending.current===0){
-        lastExtensionFileCheck.current=Date.now();await checkFileRef.current();
+        lastExtensionFileCheck.current=Date.now();
+        const refresh=checkFileRef.current();
+        if(action!=='GET_CONTEXT'&&action!=='GET_SESSION')await refresh;
       }
     },
     ready:()=>canEdit&&fileReady&&!blocked&&!busy&&!failed.current&&!checkingFile.current&&pending.current===0,
@@ -372,7 +376,8 @@ export default function App() {
   };
   useEffect(()=>installExtensionBridge({
     warning:()=>extensionHost.current.warning?.()||'',
-    prepare:()=>extensionHost.current.prepare?.()||Promise.resolve(),
+    prepare:action=>extensionHost.current.prepare?.(action)||Promise.resolve(),
+    readReady:()=>extensionHost.current.readReady?.()??false,
     getState:()=>extensionHost.current.getState(),ready:()=>extensionHost.current.ready(),
     safeToClose:()=>extensionHost.current.safeToClose(),commit:(next,base)=>extensionHost.current.commit(next,base),
     openSession:(id,date)=>extensionHost.current.openSession(id,date)

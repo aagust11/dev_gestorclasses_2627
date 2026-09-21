@@ -19,7 +19,7 @@ window.addEventListener('message',event=>{
   if(event.source!==window||event.origin!==location.origin)return;
   if(event.data?.channel==='aula-extension-probe-response'){
     const p=probes.get(event.data.probeId);
-    if(p){clearTimeout(p.timer);probes.delete(event.data.probeId);p.reply({transport:true,ready:!!event.data.ready,version:event.data.version,safeToClose:!!event.data.safeToClose});}
+    if(p){clearTimeout(p.timer);probes.delete(event.data.probeId);p.reply({transport:true,ready:!!event.data.ready,readReady:event.data.readReady??!!event.data.ready,version:event.data.version,safeToClose:!!event.data.safeToClose});}
   }
   if(event.data?.channel==='aula-extension-response'){
     const response=event.data.response,p= pending.get(response?.requestId);

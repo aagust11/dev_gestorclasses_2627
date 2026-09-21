@@ -1,6 +1,6 @@
 # Àula · Extensió descarregable
 
-Versió 1.1.0. Chrome 116 o posterior, Manifest V3. Inclou popup, panell lateral, cerca d’alumnes, assistència, anotacions i accés al diari.
+Versió 1.1.1. Chrome 116 o posterior, Manifest V3. Inclou popup, panell lateral, cerca d’alumnes, assistència, anotacions i accés al diari.
 
 ## Instal·lació
 
@@ -37,3 +37,5 @@ Substitueix els fitxers i prem **Torna a carregar** a `chrome://extensions`; act
 API oficial del panell: https://developer.chrome.com/docs/extensions/reference/api/sidePanel
 
 La llista s’ordena alfabèticament pel nom mostrat, respectant els accents i el nom preferit. En actualitzar des de la versió 1.0.0 cal reemplaçar la carpeta, prémer «Torna a carregar» a Chrome i actualitzar qualsevol pestanya antiga d’Àula.
+
+La consulta mostra les dades ja carregades al navegador mentre es comprova el fitxer en segon pla, amb un avís durant la sincronització. Les modificacions mantenen la cua de desat i la comprovació del fitxer. «Obrir Àula» activa la web immediatament, sense esperar aquesta cua.

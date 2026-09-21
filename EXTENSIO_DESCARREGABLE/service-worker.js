@@ -1,22 +1,30 @@
 const APP='https://aagust11.github.io/dev_gestorclasses_2627/';
 let auxiliary=null,closeTimer=null,badgeTimer=null,tail=Promise.resolve();
 const clients=new Set();
+let tabLookup=null;
+const readAction=action=>['GET_CONTEXT','GET_SESSION','OPEN_SESSION'].includes(action);
 const isApp=url=>{try{const u=new URL(url);return u.origin==='https://aagust11.github.io'&&u.pathname.startsWith('/dev_gestorclasses_2627/');}catch{return false;}};
 const request=(action,payload={})=>({version:1,requestId:crypto.randomUUID(),action,payload});
 const send=(id,req)=>chrome.tabs.sendMessage(id,{channel:'aula-route',request:req});
 async function appTab(create=true){
+  // Opening the app and loading data may race: share only tab lookup/creation.
+  if(tabLookup){const tab=await tabLookup;if(tab||!create)return tab;}
+  const lookup=findAppTab(create);tabLookup=lookup;
+  try{return await lookup;}finally{if(tabLookup===lookup)tabLookup=null;}
+}
+async function findAppTab(create=true){
   const tabs=(await chrome.tabs.query({url:APP+'*'})).filter(t=>isApp(t.url));
   if(tabs.length)return tabs.find(t=>t.active)||tabs[0];
   if(!create)return null;
   const tab=await chrome.tabs.create({url:APP+'?aula-extension='+chrome.runtime.getManifest().version,active:false});auxiliary=tab.id;await chrome.tabs.update(tab.id,{autoDiscardable:false});return tab;
 }
-async function ready(tab){
+async function ready(tab,read=false){
   let last;const deadline=Date.now()+45000;
   while(Date.now()<deadline){
     try{
       last=await chrome.tabs.sendMessage(tab.id,{channel:'aula-route',ping:true});
       if(last?.version&&last.version!==1)throw Error('Actualitza Àula i l’extensió: versions incompatibles.');
-      if(last?.ready)return;
+      if(read?(last?.readReady??last?.ready):last?.ready)return;
     }catch(e){if(e.message?.includes('incompatibles'))throw e;}
     await new Promise(r=>setTimeout(r,250));
   }
@@ -55,13 +63,13 @@ async function route(message){
   if(!tab)return {ok:true,idle:true};
   if(message.open){
     auxiliary=null;await chrome.tabs.update(tab.id,{active:true,autoDiscardable:true});await chrome.windows.update(tab.windowId,{focused:true});
-    if(message.payload?.sessionId){await ready(tab);return send(tab.id,request('OPEN_SESSION',message.payload));}
+    if(message.payload?.sessionId){await ready(tab,true);return send(tab.id,request('OPEN_SESSION',message.payload));}
     return {ok:true};
   }
   if(message.passive){
     try{const result=await send(tab.id,message.request);if(result.ok&&message.request.action==='GET_CONTEXT')updateBadge(result.data);scheduleClose(tab,result);return result;}catch{return {ok:true,idle:true};}
   }
-  await ready(tab);
+  await ready(tab,readAction(message.request.action));
   // Never retry a mutation: a disconnected reply does not mean it was not saved.
   const result=await send(tab.id,message.request);
   if(result.ok&&message.request.action==='GET_CONTEXT')updateBadge(result.data);
@@ -72,10 +80,12 @@ async function route(message){
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(message?.channel==='aula-changed'&&sender.tab&&isApp(sender.tab.url)){
     chrome.runtime.sendMessage({channel:'aula-refresh'}).catch(()=>{});
-    clearTimeout(badgeTimer);badgeTimer=setTimeout(()=>{const refresh=tail.then(()=>route({passive:true,request:request('GET_CONTEXT')}));tail=refresh.catch(()=>{});},700);return;
+    clearTimeout(badgeTimer);badgeTimer=setTimeout(()=>{void route({passive:true,request:request('GET_CONTEXT')}).catch(()=>{});},700);return;
   }
   if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL(''))||message?.channel!=='aula-ui')return;
-  const operation=tail.then(()=>route(message));tail=operation.catch(()=>{});
+  // Navigation and read-only snapshots must never wait behind file I/O.
+  const independent=message.open||readAction(message.request?.action);
+  const operation=independent?route(message):tail.then(()=>route(message));if(!independent)tail=operation.catch(()=>{});
   operation.then(reply).catch(e=>reply({ok:false,error:e.message||'Connexió interrompuda. Comprova el resultat a Àula abans de repetir el canvi.'}));return true;
 });
 chrome.runtime.onInstalled.addListener(()=>{chrome.contextMenus.create({id:'quick-note',title:'Àula → Incidència ràpida',contexts:['action','page']});});

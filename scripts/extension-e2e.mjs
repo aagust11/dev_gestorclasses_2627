@@ -55,6 +55,22 @@ try{
  assert.match(await app.locator('body').innerText(),/Anotació de prova/);
  const webPupil=app.locator('tr').filter({hasText:'Àlex'}).first();await webPupil.getByRole('button',{name:'Pres.',exact:true}).click();
  await panel.waitForFunction(()=>document.querySelector('article .present')?.getAttribute('aria-pressed')==='true',{timeout:15000});
+ // Slow shared file/other tab: data and navigation must not queue behind synchronization.
+ await app.evaluate(async()=>{
+  window.testLockAcquired=false;
+  void navigator.locks.request('docentsuite-editor-v1',async()=>{window.testLockAcquired=true;await new Promise(r=>window.releaseTestLock=r);});
+  while(!window.testLockAcquired)await new Promise(r=>setTimeout(r,10));
+  window.dispatchEvent(new Event('focus'));
+ });
+ const started=Date.now();
+ result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.ok,true,JSON.stringify(result));assert.ok(Date.now()-started<2500,'Read waited for file lock');
+ const waiting=rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'q',status:'late10'});
+ await new Promise(r=>setTimeout(r,300));
+ const openStarted=Date.now();
+ const opened=await panel.evaluate(()=>chrome.runtime.sendMessage({channel:'aula-ui',open:true,payload:{}}));
+ assert.equal(opened.ok,true);assert.ok(Date.now()-openStarted<2000,'Open queued behind mutation');
+ assert.equal(context.pages().filter(p=>p.url().startsWith(APP)).length,1);
+ await app.evaluate(()=>window.releaseTestLock());assert.equal((await waiting).ok,true);
  // Persist a genuine FileSystemFileHandle (OPFS) through the same IndexedDB handle store.
  await app.evaluate(async()=>{
   const state=JSON.parse(localStorage.getItem('gestor_classes_app_state'));
