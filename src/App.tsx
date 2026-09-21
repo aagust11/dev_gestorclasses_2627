@@ -1,3 +1,4 @@
+import {BridgeHost,installExtensionBridge,publishExtensionChange} from './extension/extensionBridge';
 import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport,inspectImport} from './utils/importValidation';
 import {OrphanItem,removeOrphanData} from './utils/orphanData';
 import {prepareStudentDeletion} from './utils/deleteStudent';
@@ -347,6 +348,29 @@ export default function App() {
     setSelectedSessionDate(date);
     setActiveView('session_log'); // Virtual router view for logging class diary
   };
+
+  const extensionHost=useRef<BridgeHost>(null!);
+  extensionHost.current={
+    getState:()=>current.current,
+    warning:()=>fileWarning.current,
+    ready:()=>canEdit&&fileReady&&!blocked&&!busy&&!failed.current&&!checkingFile.current&&pending.current===0,
+    safeToClose:()=>pending.current===0&&!checkingFile.current&&!failed.current&&!fileWarning.current&&!busy,
+    openSession:handleSelectSessionFromGrid,
+    commit:async(next,base)=>{
+      if(!triggerStateUpdate(next,base))throw Error('No s’ha pogut acceptar el canvi. Revisa el desat a Àula.');
+      let wait:Promise<void>;
+      do{wait=queue.current;await wait;}while(wait!==queue.current);
+      if(failed.current)throw Error('Canvi pendent de desar. Obre Àula i resol el problema abans de repetir-lo.');
+      return {warning:fileWarning.current?'Desat al navegador. Fitxer pendent de sincronitzar: '+fileWarning.current:undefined};
+    }
+  };
+  useEffect(()=>installExtensionBridge({
+    warning:()=>extensionHost.current.warning?.()||'',
+    getState:()=>extensionHost.current.getState(),ready:()=>extensionHost.current.ready(),
+    safeToClose:()=>extensionHost.current.safeToClose(),commit:(next,base)=>extensionHost.current.commit(next,base),
+    openSession:(id,date)=>extensionHost.current.openSession(id,date)
+  }),[]);
+  useEffect(()=>{publishExtensionChange();},[localState,saveStatus,fileReady]);
 
   return (
     <div id="app-viewport" className="min-h-screen bg-[#F8FAFC] text-slate-800 flex pl-56 font-sans antialiased selection:bg-blue-600/10 selection:text-blue-600">

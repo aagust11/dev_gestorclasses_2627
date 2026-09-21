@@ -84,7 +84,9 @@ export default function Sidebar({
             </button>
           );
         })}
+        <a href={`${(import.meta as any).env?.BASE_URL||'./'}EXTENSIO_DESCARREGABLE/`} target="_blank" rel="noopener noreferrer" className="block px-3 py-2.5 text-sm hover:text-white">Extensió del navegador ↗</a>
       </nav>
     </aside>
   );
 }
+

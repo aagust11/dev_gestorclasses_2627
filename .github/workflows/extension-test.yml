@@ -1,0 +1,26 @@
+name: Validate browser extension
+on:
+  push:
+    branches: [work/session-blocks, main]
+    paths: ['EXTENSIO_DESCARREGABLE/**', 'src/**', 'scripts/extension-e2e.mjs', '.github/workflows/extension-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Install isolated browser test dependency
+        run: npm install --prefix "$RUNNER_TEMP/aula-e2e" --no-package-lock playwright@1.58.2
+      - name: Install Chromium
+        run: node "$RUNNER_TEMP/aula-e2e/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Test extension and shared saving
+        run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/aula-e2e/node_modules/playwright" node --import tsx scripts/extension-e2e.mjs

@@ -1,3 +1,4 @@
+import {attendanceEntry,annotationEntry} from '../utils/sessionMutations';
 import BookmarkBar from './BookmarkBar';
 import {classroomName,searchableStudentName} from '../utils/studentNames';
 import {SortButton,sortRows,useTableSort} from './TableSort';
@@ -178,19 +179,13 @@ export default function SessionView({
   };
 
   const handleStatusChange = (studentId: string, status: AttendanceType) => {
-    updateStudentLog(studentId, (prev) => ({
-      ...prev,
-      status
-    }));
+    updateStudentLog(studentId,prev=>attendanceEntry(prev,status));
   };
 
   const handleMarkAllPresent = () => {
     const nextAttendance = { ...attendance };
     students.forEach(st => {
-      nextAttendance[st.id] = {
-        ...(nextAttendance[st.id] || {}),
-        status: 'present'
-      };
+      if(!nextAttendance[st.id]||nextAttendance[st.id].status==='pending')nextAttendance[st.id]=attendanceEntry(nextAttendance[st.id],'present');
     });
     setAttendance(nextAttendance);
     triggerSaveUpdate(comments, nextAttendance, nextSessionNotes);
@@ -210,28 +205,7 @@ export default function SessionView({
     const draftText = draftComments[studentId]?.[key]?.trim();
     if (!draftText) return;
 
-    updateStudentLog(studentId, (prev) => {
-      const fieldList = key === 'pos' 
-        ? 'posComments' 
-        : key === 'regular' 
-          ? 'regularComments' 
-          : 'incidentComments';
-      const legacyField = key === 'pos'
-        ? 'posComment'
-        : key === 'regular'
-          ? 'regularComment'
-          : 'incidentComment';
-
-      const existingLegacy = prev[legacyField];
-      const existingArray = prev[fieldList] || (existingLegacy ? [existingLegacy] : []);
-      const updatedArray = [...existingArray, draftText];
-
-      return {
-        ...prev,
-        [fieldList]: updatedArray,
-        [legacyField]: undefined
-      };
-    });
+    updateStudentLog(studentId,prev=>annotationEntry(prev,key,draftText));
 
     // Reset this draft input field
     setDraftComments(prev => ({
@@ -549,10 +523,10 @@ export default function SessionView({
                   type="button"
                   onClick={handleMarkAllPresent}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto shadow-2xs"
-                  title="Marcar tots els alumnes com a presents ràpidament"
+                  title="Marcar només els alumnes pendents com a presents"
                 >
                   <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Marcar tots presents</span>
+                  <span>Marcar pendents com a presents</span>
                 </button>
               )}
             </div>
@@ -616,7 +590,7 @@ export default function SessionView({
                             </div>
                           </td>
 
-                          {/* Col 3: Attendance buttons (Pres, <10m, >=10m, Falta) */}
+                          {/* Col 3: Attendance buttons (Pres, ≤10m, >10m, Falta) */}
                           <td className="py-2 px-3">
                             <div className="inline-flex rounded-lg border border-slate-200/80 p-0.5 bg-white shadow-2xs">
                               <button type="button" title="Sense assistència confirmada" onClick={()=>handleStatusChange(student.id,'pending')} className={`px-2 py-1 rounded text-[10.5px] font-bold ${sLog.status==='pending'?'bg-slate-600 text-white':'text-slate-500'}`}>Pendent</button>
@@ -643,9 +617,9 @@ export default function SessionView({
                                     ? 'bg-amber-500 text-white shadow-xs'
                                     : 'text-slate-500 hover:text-slate-800'
                                 }`}
-                                title="Retard &lt;10 minuts"
+                                title="Retard ≤10 minuts"
                               >
-                                &lt;10m
+                                ≤10m
                               </button>
 
                               <button
@@ -657,9 +631,9 @@ export default function SessionView({
                                     ? 'bg-orange-500 text-white shadow-xs'
                                     : 'text-slate-500 hover:text-slate-800'
                                 }`}
-                                title="Retard &ge;10 minuts"
+                                title="Retard >10 minuts"
                               >
-                                &ge;10m
+                                &gt;10m
                               </button>
 
                               <button
@@ -982,3 +956,4 @@ export default function SessionView({
     </div>
   );
 }
+
