@@ -371,6 +371,7 @@ export default function App() {
     openSession:(id,date)=>extensionHost.current.openSession(id,date)
   }),[]);
   useEffect(()=>{publishExtensionChange();},[localState,saveStatus,fileReady]);
+  useEffect(()=>{const timer=window.setInterval(publishExtensionChange,60000);return()=>clearInterval(timer);},[]);
 
   return (
     <div id="app-viewport" className="min-h-screen bg-[#F8FAFC] text-slate-800 flex pl-56 font-sans antialiased selection:bg-blue-600/10 selection:text-blue-600">

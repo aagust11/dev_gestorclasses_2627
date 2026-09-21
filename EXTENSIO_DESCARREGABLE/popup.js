@@ -1,4 +1,5 @@
 const $=id=>document.getElementById(id);
+let windowId;chrome.windows.getCurrent().then(w=>windowId=w.id);
 const rpc=(action,payload={})=>chrome.runtime.sendMessage({channel:'aula-ui',request:{version:1,requestId:crypto.randomUUID(),action,payload}});
 $('clock').textContent=new Date().toLocaleString('ca-ES',{dateStyle:'full',timeStyle:'short'});
 async function load(){try{
@@ -8,11 +9,12 @@ async function load(){try{
     const snap=await rpc('GET_SESSION',{date:session.date,sessionId:session.id});
     if(snap.ok){const s=snap.data.summary;p.append(document.createElement('br'),`${s.recorded}/${s.total} registrades · ${s.pending} pendents`);}
   }
-  $('status').textContent=res.data.current.length?'Sessió actual':res.data.next?`Propera: ${res.data.next.name} · ${res.data.next.date} ${res.data.next.startTime}`:'No hi ha cap classe programada.';
+  $('status').textContent=res.warning|| (res.data.current.length?'Sessió actual':res.data.next?`Propera: ${res.data.next.name} · ${res.data.next.date} ${res.data.next.startTime}`:'No hi ha cap classe programada.');
 }catch(e){$('status').textContent=e.message;}}
 for(const [id,quick] of [['attendance',false],['quick',true]])$(id).onclick=()=>{
   // open must remain directly attached to the user gesture.
-  chrome.windows.getCurrent(win=>{chrome.sidePanel.open({windowId:win.id}).then(()=>chrome.sidePanel.setOptions({path:quick?'sidepanel.html?quick=1':'sidepanel.html'})).then(()=>window.close()).catch(e=>$('status').textContent=e.message);});
+  if(windowId==null)return;
+  chrome.sidePanel.open({windowId}).then(()=>chrome.sidePanel.setOptions({path:quick?'sidepanel.html?quick=1':'sidepanel.html'})).then(()=>window.close()).catch(e=>$('status').textContent=e.message);
 };
 $('open').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',open:true}).catch(e=>$('status').textContent=e.message);
 $('retry').onclick=load;load();

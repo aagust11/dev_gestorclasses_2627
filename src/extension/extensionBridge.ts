@@ -17,7 +17,14 @@ export function createExtensionDispatcher(host:BridgeHost){
       if(!actions.includes(request.action))throw Error('Operació desconeguda.');
       if(!host.ready())throw Error('Àula està iniciant-se o té un desat pendent/error. Obre Àula o torna-ho a provar.');
       const state=host.getState(),p=request.payload||{};
-      if(request.action==='GET_CONTEXT')return {version:1,requestId:request.requestId,ok:true,data:{...getCurrentClassContext(state),...(p.date?{sessions:sessionsOnDate(state,string(p.date,10))}:{})},safeToClose:host.safeToClose(),warning:host.warning?.()||undefined};
+      if(request.action==='GET_CONTEXT'){
+        const context=getCurrentClassContext(state);
+        const current=context.current.map(session=>{
+          try{return {...session,summary:getSessionSnapshot(state,{date:session.date,sessionId:session.id}).summary};}
+          catch{return {...session,needsReview:true};}
+        });
+        return {version:1,requestId:request.requestId,ok:true,data:{...context,current,...(p.date?{sessions:sessionsOnDate(state,string(p.date,10))}:{})},safeToClose:host.safeToClose(),warning:host.warning?.()||undefined};
+      }
       const target:SessionTarget={date:string(p.date,10),sessionId:string(p.sessionId)};
       const snapshot=getSessionSnapshot(state,target);
       if(request.action==='GET_SESSION')return {version:1,requestId:request.requestId,ok:true,data:snapshot,safeToClose:host.safeToClose(),warning:host.warning?.()||undefined};

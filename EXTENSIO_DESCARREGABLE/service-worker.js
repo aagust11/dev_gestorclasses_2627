@@ -1,5 +1,5 @@
 const APP='https://aagust11.github.io/dev_gestorclasses_2627/';
-let auxiliary=null,closeTimer=null,tail=Promise.resolve();
+let auxiliary=null,closeTimer=null,badgeTimer=null,tail=Promise.resolve();
 const isApp=url=>{try{const u=new URL(url);return u.origin==='https://aagust11.github.io'&&u.pathname.startsWith('/dev_gestorclasses_2627/');}catch{return false;}};
 const request=(action,payload={})=>({version:1,requestId:crypto.randomUUID(),action,payload});
 const send=(id,req)=>chrome.tabs.sendMessage(id,{channel:'aula-route',request:req});
@@ -31,7 +31,7 @@ function scheduleClose(tab,response){
 }
 function updateBadge(context){
   if(!context?.current)return;
-  chrome.action.setBadgeText({text:context.current.length?'CL':''});
+  chrome.action.setBadgeText({text:context.current.some(s=>s.needsReview||s.summary?.pending>0)?'!':context.current.length?'CL':''});
   chrome.action.setBadgeBackgroundColor({color:'#172554'});
 }
 async function route(message){
@@ -56,9 +56,10 @@ async function route(message){
 }
 chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   if(message?.channel==='aula-changed'&&sender.tab&&isApp(sender.tab.url)){
-    chrome.runtime.sendMessage({channel:'aula-refresh'}).catch(()=>{});return;
+    chrome.runtime.sendMessage({channel:'aula-refresh'}).catch(()=>{});
+    clearTimeout(badgeTimer);badgeTimer=setTimeout(()=>{const refresh=tail.then(()=>route({passive:true,request:request('GET_CONTEXT')}));tail=refresh.catch(()=>{});},700);return;
   }
-  if(sender.id!==chrome.runtime.id||sender.tab||message?.channel!=='aula-ui')return;
+  if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL(''))||message?.channel!=='aula-ui')return;
   const operation=tail.then(()=>route(message));tail=operation.catch(()=>{});
   operation.then(reply).catch(e=>reply({ok:false,error:e.message||'Connexió interrompuda. Comprova el resultat a Àula abans de repetir el canvi.'}));return true;
 });
