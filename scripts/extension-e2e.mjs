@@ -63,9 +63,12 @@ try{
  await app.locator('#session-comments-area').fill('Diari conservat');
  result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.data.notHeld,true);assert.equal(result.data.students.length,0);
  const refused=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'absent'});assert.equal(refused.ok,false);
+ await app.waitForFunction(()=>JSON.parse(localStorage.getItem('gestor_classes_app_state')).sessionLogs.some(l=>l.notHeld&&l.notHeldReason==='Sortida del grup'&&l.comments==='Diari conservat'));
  await app.locator('#btn-back-to-horari').click();await app.getByText('⊘ No feta',{exact:true}).waitFor();
  await app.reload();await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
  assert.equal(await app.getByRole('textbox',{name:'Motiu de la classe no feta'}).inputValue(),'Sortida del grup');
+ // Controlled diary fields hydrate in a React effect after navigation.
+ await app.waitForFunction(()=>document.querySelector('#session-comments-area')?.value==='Diari conservat');
  assert.equal(await app.locator('#session-comments-area').inputValue(),'Diari conservat');
  await app.getByRole('checkbox',{name:'Classe no feta',exact:true}).uncheck();
  result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.data.notHeld,false);assert.equal(result.data.summary.present,2);
