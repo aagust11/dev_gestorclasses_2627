@@ -1,6 +1,6 @@
 # Àula · Extensió descarregable
 
-Versió 1.1.2. Chrome 116 o posterior, Manifest V3. Inclou popup, panell lateral, cerca d’alumnes, assistència, anotacions i accés al diari.
+Versió 1.1.3. Chrome 116 o posterior, Manifest V3. Inclou popup, panell lateral, cerca d’alumnes, assistència, anotacions i accés al diari.
 
 ## Instal·lació
 

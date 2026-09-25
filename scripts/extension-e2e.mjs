@@ -84,6 +84,8 @@ try{
  await app.locator('#nav-item-horari').click();await app.getByText('Sortida substitució',{exact:true}).waitFor();
  assert.equal(await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).count(),0);
  result=await rpc('GET_CONTEXT',{date});assert.equal(result.data.sessions.length,0);
+ await panel.getByText('No hi ha sessions en aquesta data.',{exact:true}).waitFor({timeout:20000});
+ assert.equal(await panel.locator('article').count(),0);
  await app.locator('#nav-item-configuracio').click();await app.locator('#tab-btn-substitutions').click();
  app.once('dialog',dialog=>dialog.accept());
  await app.locator('#panel-substitutions button[title]').click();

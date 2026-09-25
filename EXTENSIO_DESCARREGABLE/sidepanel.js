@@ -46,7 +46,7 @@ function filter(){const words=fold($('search').value).split(/\s+/).filter(Boolea
 async function loadSession(passive=false){
   if(busy||!$('session').value||(passive&&document.activeElement?.matches('textarea,select,input')))return;
   const selected=target(),sequence=++readSequence;
-  try{const res=await rpc('GET_SESSION',selected,passive);if(busy||sequence!==readSequence||JSON.stringify(selected)!==JSON.stringify(target())||res.idle)return;if(!res.ok){if(passive)return;throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
+  try{const res=await rpc('GET_SESSION',selected,passive);if(busy||sequence!==readSequence||JSON.stringify(selected)!==JSON.stringify(target())||res.idle)return;if(!res.ok){if(passive){await load();return;}throw Error(res.error);}snapshot=res.data;render();if(res.warning)status(res.warning,true);else if(!hasError&&!passive)status('Sessió carregada.');}
   catch(e){hasError=true;status(e.message,true);}
 }
 async function load(){
