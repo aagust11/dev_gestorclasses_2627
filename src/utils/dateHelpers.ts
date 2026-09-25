@@ -1,4 +1,4 @@
-import {getDayBlocks} from './sessionBlocks';
+import {getDayBlocks,blockLogs,diaryBlock} from './sessionBlocks';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -133,14 +133,18 @@ export function getProgrammedSessionsForSubject(
   state: AppState,
   subjectId: string,
   startCal: string,
-  endCal: string
-): { date: string; timeSlotId: string; scheduleItemId: string }[] {
-  const sessions:{date:string;timeSlotId:string;scheduleItemId:string}[]=[];
+  endCal: string,
+  includeNotHeld = false
+): { date: string; timeSlotId: string; scheduleItemId: string; notHeld?: boolean }[] {
+  const sessions:{date:string;timeSlotId:string;scheduleItemId:string;notHeld?:boolean}[]=[];
   const current=fromIsoDate(startCal),end=fromIsoDate(endCal);
   while(current<=end){
     const date=toIsoDate(current);
     if(current.getDay()>=1&&current.getDay()<=5&&!getHolidayForDate(date,state.config.holidays)){
-      for(const block of getDayBlocks(state,date))if(block.subjectId===subjectId)sessions.push({date,timeSlotId:block.timeSlotId,scheduleItemId:block.id});
+      for(const block of getDayBlocks(state,date))if(block.subjectId===subjectId){
+        const notHeld=blockLogs(state,diaryBlock(state,block,date),date).some(log=>log.notHeld);
+        if(!notHeld||includeNotHeld)sessions.push({date,timeSlotId:block.timeSlotId,scheduleItemId:block.id,...(notHeld?{notHeld:true}:{})});
+      }
     }
     current.setDate(current.getDate()+1);
   }
@@ -195,3 +199,4 @@ export function getLastDayBeforeDeliveryActivities(
   }
   return result;
 }
+

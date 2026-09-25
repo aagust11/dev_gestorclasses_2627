@@ -271,21 +271,23 @@ export default function SessionView({
       state,
       subject.id,
       state.config.startDate,
-      state.config.endDate
+      state.config.endDate,
+      true // Keep cancelled entries reachable, but never count them.
     );
 
     const occurrences = programmed.filter((p,i,all)=>!subject.isGeneral||all.findIndex(x=>x.date===p.date)===i).map(p => ({
       id: p.scheduleItemId,
       date: p.date,
+      notHeld: !!p.notHeld,
     }));
 
     const activeIdx = occurrences.findIndex(item => (subject.isGeneral || item.id === scheduleItemId) && item.date === dateStr);
     
     return {
-      prevItem: activeIdx > 0 ? occurrences[activeIdx - 1] : null,
-      nextItem: activeIdx !== -1 && activeIdx < occurrences.length - 1 ? occurrences[activeIdx + 1] : null,
-      sessionNumber: activeIdx !== -1 ? activeIdx + 1 : null,
-      totalSessions: occurrences.length
+      prevItem: activeIdx > 0 ? occurrences.slice(0,activeIdx).filter(item=>!item.notHeld).at(-1)||null : null,
+      nextItem: activeIdx !== -1 ? occurrences.slice(activeIdx+1).find(item=>!item.notHeld)||null : null,
+      sessionNumber: activeIdx !== -1 && !occurrences[activeIdx].notHeld ? occurrences.slice(0,activeIdx+1).filter(item=>!item.notHeld).length : null,
+      totalSessions: occurrences.filter(item=>!item.notHeld).length
     };
   };
 
@@ -363,7 +365,7 @@ export default function SessionView({
             
             <p className="text-xs text-slate-500 font-medium mt-1 flex flex-wrap items-center gap-1.5">
               <span className="text-sky-700 font-bold bg-sky-50 border border-sky-200/70 px-2 py-0.5 rounded-md text-[10px]">
-                Sessió {sessionNumber || 1} de {totalSessions || 1}
+                {existingLog?.notHeld?'Classe no feta · no computa':sessionNumber!==null?`Sessió ${sessionNumber} de ${totalSessions}`:`${totalSessions} sessions`}
               </span>
               <span>•</span>
               <span className="font-semibold text-slate-700">{formatCatalanDate(fromIsoDate(dateStr))}</span>

@@ -147,3 +147,15 @@ test('class not held preserves history, survives JSON and is excluded from stude
  assert.equal(studentSessionHistory(state,'p')[0].studentLog.incidentComments?.[0],'Conservat');
  assert.equal(validateState({...state,sessionLogs:[{...state.sessionLogs[0],notHeld:'yes'}]}),false);
 });
+
+test('not-held blocks are excluded from session totals and delivery dates, reversibly',()=>{
+ let state=fixture();state.config.endDate='2026-09-21';const block=getDayBlocks(state,date)[0];
+ assert.equal(getProgrammedSessionsForSubject(state,'s',date,state.config.endDate).length,2);
+ state=storeBlockLog(state,block,date,{id:'l',scheduleItemId:block.id,subjectId:'s',date,comments:'',attendance:{p:{status:'absent'}},notHeld:true});
+ assert.deepEqual(getProgrammedSessionsForSubject(state,'s',date,state.config.endDate).map(s=>s.date),['2026-09-21']);
+ assert.equal(subjectAttendance(state,state.subjects[0],'annual',date).p.total,0);
+ const html=renderToStaticMarkup(React.createElement(SessionBlockPage,{state,scheduleItemId:block.id,dateStr:date,onBackToTimeline:()=>{},onNavigateToSession:()=>{},onChangeState:()=>{},onSaveSessionLog:()=>{}}));
+ assert.match(html,/Classe no feta · no computa/);assert.doesNotMatch(html,/Sessió 1 de/);
+ state=storeBlockLog(state,block,date,{...state.sessionLogs[0],notHeld:false});
+ assert.equal(getProgrammedSessionsForSubject(state,'s',date,state.config.endDate).length,2);
+});
