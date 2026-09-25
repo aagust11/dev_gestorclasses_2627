@@ -120,7 +120,7 @@ export default function ConfiguracioView({
   // ==========================================
   const [subDate, setSubDate] = useState('');
   const [subTimeSlotId, setSubTimeSlotId] = useState('');
-  const [subType, setSubType] = useState<'subject' | 'other'>('subject');
+  const [subType, setSubType] = useState<'subject' | 'other'>('other');
   const [subSubjectId, setSubSubjectId] = useState('');
   const [subCustomReason, setSubCustomReason] = useState('');
   const subSlots=substitutionSlots(state,subDate);
@@ -145,13 +145,13 @@ export default function ConfiguracioView({
     }
 
     try{
-      const next=addSubstitution(state,{date:subDate,timeSlotId:subTimeSlotId,type:subType,...(subType==='subject'?{subjectId:subSubjectId}:{customReason:subCustomReason.trim()})});
+      const next=addSubstitution(state,{date:subDate,timeSlotId:subSlots.find(b=>b.id===subTimeSlotId)?.timeSlotId||'',scheduleItemId:subTimeSlotId,type:subType,...(subType==='subject'?{subjectId:subSubjectId}:{customReason:subCustomReason.trim()})});
       if(onChangeState(next,state)===false)return;
     }catch(error){alert((error as Error).message);return;}
 
     setSubDate('');
     setSubTimeSlotId('');
-    setSubType('subject');
+    setSubType('other');
     setSubSubjectId('');
     setSubCustomReason('');
     alert('Substitució creada correctament!');
@@ -1552,7 +1552,7 @@ export default function ConfiguracioView({
           ========================================== */}
       {activeTab === 'substitutions' && (
         <div id="panel-substitutions" className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn text-slate-800">
-          <p className="lg:col-span-3 text-xs text-slate-600">Si una classe no s’ha fet, obre-la des de l’horari i marca «Classe no feta» a la capçalera. Fes servir les substitucions per canviar la matèria d’una franja sense registre previ.</p>
+          <p className="lg:col-span-3 text-xs text-slate-600">Selecciona el bloc de classe tal com apareix a l’horari. La substitució n’ocupa tota la durada i exclou la classe original dels recomptes, encara que ja tingui registres. La graella de minuts només determina la visualització.</p>
           {/* List of Substitutions */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
@@ -1618,6 +1618,7 @@ export default function ConfiguracioView({
                   <input
                     type="date"
                     required
+                    aria-label="Data de la substitució"
                     value={subDate}
                     onChange={(e) => {setSubDate(e.target.value);setSubTimeSlotId('');}}
                     className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-505"
@@ -1625,14 +1626,15 @@ export default function ConfiguracioView({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Selecciona Franja d'Hora</label>
+                  <label className="block text-xs font-semibold text-slate-500 mb-1.5">Classe de l’horari a substituir</label>
                   <select
                     required
+                    aria-label="Classe a substituir"
                     value={subTimeSlotId}
                     onChange={(e) => setSubTimeSlotId(e.target.value)}
                     className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-white font-semibold"
                   >
-                    <option value="">-- Tria una franja --</option>
+                    <option value="">-- Tria una classe --</option>
                     {subSlots.map(ts => (
                       <option key={ts.id} value={ts.id}>
                         {ts.name} {ts.startTime && ts.endTime ? `(${ts.startTime} - {ts.endTime})` : ''}
@@ -1662,7 +1664,7 @@ export default function ConfiguracioView({
                         onChange={() => setSubType('other')}
                         className="text-indigo-650 focus:ring-indigo-505 rounded-full"
                       />
-                      <span>Altres (motiu lliure)</span>
+                      <span>Motiu de substitució</span>
                     </label>
                   </div>
                 </div>
@@ -1683,10 +1685,11 @@ export default function ConfiguracioView({
                   </div>
                 ) : (
                   <div>
-                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">Motiu del Canvi</label>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">Motiu de la substitució</label>
                     <input
                       type="text"
                       placeholder="Indiqueu el motiu lliure..."
+                      aria-label="Motiu de la substitució"
                       value={subCustomReason}
                       onChange={(e) => setSubCustomReason(e.target.value)}
                       className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none"

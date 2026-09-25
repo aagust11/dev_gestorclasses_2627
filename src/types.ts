@@ -148,6 +148,7 @@ export interface ClassroomPlanVersion {
 }
 
 export interface ScheduleSubstitution {
+  replacedScheduleItemIds?: string[];
   id: string;
   date: string; // YYYY-MM-DD
   timeSlotId: string;

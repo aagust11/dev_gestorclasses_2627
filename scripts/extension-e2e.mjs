@@ -72,6 +72,24 @@ try{
  assert.equal(await app.locator('#session-comments-area').inputValue(),'Diari conservat');
  await app.getByRole('checkbox',{name:'Classe no feta',exact:true}).uncheck();
  result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.data.notHeld,false);assert.equal(result.data.summary.present,2);
+ // Replacement from settings occupies the actual lesson block and excludes original history.
+ await app.locator('#nav-item-configuracio').click();
+ await app.locator('#tab-btn-substitutions').click();
+ await app.getByLabel('Data de la substitució',{exact:true}).fill(date);
+ await app.getByLabel('Classe a substituir',{exact:true}).selectOption('session');
+ await app.getByLabel('Motiu de la substitució',{exact:true}).fill('Sortida substitució');
+ app.once('dialog',dialog=>dialog.accept());
+ await app.getByRole('button',{name:'Confirmar Substitució',exact:true}).click();
+ await app.waitForFunction(()=>JSON.parse(localStorage.getItem('gestor_classes_app_state')).config.substitutions.length===1);
+ await app.locator('#nav-item-horari').click();await app.getByText('Sortida substitució',{exact:true}).waitFor();
+ assert.equal(await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).count(),0);
+ result=await rpc('GET_CONTEXT',{date});assert.equal(result.data.sessions.length,0);
+ await app.locator('#nav-item-configuracio').click();await app.locator('#tab-btn-substitutions').click();
+ app.once('dialog',dialog=>dialog.accept());
+ await app.locator('#panel-substitutions button[title]').click();
+ await app.waitForFunction(()=>JSON.parse(localStorage.getItem('gestor_classes_app_state')).config.substitutions.length===0);
+ await app.locator('#nav-item-horari').click();await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
+ await app.waitForFunction(()=>document.querySelector('#session-comments-area')?.value==='Diari conservat');
  // Slow shared file/other tab: data and navigation must not queue behind synchronization.
  await app.evaluate(async()=>{
   window.testLockAcquired=false;

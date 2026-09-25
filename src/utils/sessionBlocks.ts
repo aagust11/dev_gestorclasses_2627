@@ -1,3 +1,4 @@
+import {substitutionMembers,isReplacedLog} from './substitutionTargets';
 import {AppState,SessionLog,StudentLog} from '../types';
 
 export const minutes=(time:string)=>{if(!/^([01]\d|2[0-3]):[0-5]\d$/.test(time))return NaN;const [h,m]=time.split(':').map(Number);return h*60+m;};
@@ -7,9 +8,10 @@ export function getDayBlocks(state:AppState,date:string):SessionBlock[]{
   const day=new Date(date+'T12:00:00').getDay();
   const slots=new Map(state.config.timeSlots.map(s=>[s.id,s]));
   const substitutions=(state.config.substitutions||[]).filter(s=>s.date===date);
+  const removed=new Set(substitutions.flatMap(s=>substitutionMembers(state,s)));
   const entries:SessionBlock[]=[];
   for(const item of state.schedule.filter(s=>s.dayOfWeek===day)){
-    if(substitutions.some(s=>s.timeSlotId===item.timeSlotId))continue;
+    if(removed.has(item.id))continue;
     const slot=slots.get(item.timeSlotId);
     entries.push({id:item.id,subjectId:item.subjectId,memberIds:[item.id],timeSlotId:item.timeSlotId,startTime:slot?.startTime||'',endTime:slot?.endTime||'',substitution:false});
   }
@@ -21,7 +23,7 @@ export function getDayBlocks(state:AppState,date:string):SessionBlock[]{
     if(!match)continue;
     const ids=log.blockMemberIds!.filter(id=>entries.some(e=>e.id===id));
     ids.forEach(id=>used.add(id));
-    frozen.push({...match,id:log.scheduleItemId,subjectId:log.subjectId,memberIds:ids,startTime:log.startTime||match.startTime,endTime:log.endTime||match.endTime});
+    frozen.push({...match,id:log.scheduleItemId,subjectId:log.subjectId,memberIds:ids,startTime:ids.length<log.blockMemberIds!.length?entries.filter(e=>ids.includes(e.id)).map(e=>e.startTime).sort()[0]:log.startTime||match.startTime,endTime:ids.length<log.blockMemberIds!.length?entries.filter(e=>ids.includes(e.id)).map(e=>e.endTime).sort().at(-1)!:log.endTime||match.endTime});
   }
   const remaining=entries.filter(e=>!used.has(e.id)).sort((a,b)=>(minutes(a.startTime)||0)-(minutes(b.startTime)||0)||a.id.localeCompare(b.id));
   const blocks:SessionBlock[]=[];
@@ -90,7 +92,7 @@ export function effectiveSessionLogs(state:AppState):SessionLog[]{
       result.push(merged);
     }
   }
-  result.push(...state.sessionLogs.filter(l=>!consumed.has(l.id)));cache.set(state,{refs,logs:result});return result;
+  result.push(...state.sessionLogs.filter(l=>!consumed.has(l.id)));const active=result.filter(log=>!isReplacedLog(state,log));cache.set(state,{refs,logs:active});return active;
 }
 export function storeBlockLog(state:AppState,block:SessionBlock,date:string,log:SessionLog):AppState{
   const old=blockLogs(state,block,date);const ids=new Set(old.map(l=>l.id));
@@ -119,7 +121,7 @@ export function saveTimetableEntry(state:AppState,input:{id?:string;subjectId:st
   const slot={id:slotId,name:input.startTime+'–'+input.endTime,startTime:input.startTime,endTime:input.endTime};
   const config={...state.config,timeSlots:[...state.config.timeSlots,slot]};
   const item={id,dayOfWeek:input.dayOfWeek,subjectId:input.subjectId,timeSlotId:slotId};
-  if(previous&&state.config.substitutions?.some(s=>s.timeSlotId===previous.timeSlotId))throw Error('Aquesta franja té substitucions configurades. Revisa-les abans de canviar-la.');
+  if(previous&&state.config.substitutions?.some(s=>substitutionMembers(state,s).includes(previous.id)))throw Error('Aquesta franja té substitucions configurades. Revisa-les abans de canviar-la.');
   // Freeze existing session bounds before changing their timetable source.
   const sessionLogs=state.sessionLogs.map(l=>{
     if(!previous)return l;
@@ -129,3 +131,4 @@ export function saveTimetableEntry(state:AppState,input:{id?:string;subjectId:st
   });
   return {...state,config,sessionLogs,schedule:previous?state.schedule.map(s=>s.id===id?item:s):[...state.schedule,item]};
 }
+
