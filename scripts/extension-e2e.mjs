@@ -90,6 +90,7 @@ try{
  app.once('dialog',dialog=>dialog.accept());
  await app.locator('#panel-substitutions button[title]').click();
  await app.waitForFunction(()=>JSON.parse(localStorage.getItem('gestor_classes_app_state')).config.substitutions.length===0);
+ await panel.getByRole('heading',{name:'Àlex',exact:true}).waitFor({timeout:20000});
  await app.locator('#nav-item-horari').click();await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
  await app.waitForFunction(()=>document.querySelector('#session-comments-area')?.value==='Diari conservat');
  // Slow shared file/other tab: data and navigation must not queue behind synchronization.

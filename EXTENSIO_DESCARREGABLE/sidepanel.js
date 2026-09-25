@@ -62,6 +62,6 @@ async function load(){
 $('all').onclick=()=>mutate(snapshot?.summary.recorded===0?'MARK_ALL_PRESENT':'MARK_PENDING_PRESENT');
 $('search').oninput=filter;$('date').onchange=()=>{captureDrafts();displayedTarget=null;snapshot=null;$('students').replaceChildren();$('summary').textContent='';$('all').hidden=true;load();};$('session').onchange=()=>{captureDrafts();displayedTarget=null;snapshot=null;$('students').replaceChildren();loadSession();};$('retry').onclick=load;
 $('open').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',open:true,payload:target()}).then(r=>{if(!r.ok)status(r.error,true);}).catch(e=>status(e.message,true));
-chrome.runtime.onMessage.addListener(message=>{if(message.channel==='aula-refresh'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>loadSession(true),500);}});
+chrome.runtime.onMessage.addListener(message=>{if(message.channel==='aula-refresh'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{if(!$('session').value&&!busy)void load();else void loadSession(true);},500);}});
 // Passive refresh never creates a tab. Only an explicit user operation can do that.
 setInterval(()=>loadSession(true),15000);load();
