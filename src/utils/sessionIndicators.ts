@@ -9,6 +9,8 @@ export function sessionIndicators(state:AppState,visual:SessionBlock,date:string
   const hasDiary=logs.some(log=>Boolean(log.comments?.trim()));
   const attendance=logs.length?combineBlockLogs(block,date,logs).log.attendance:{};
   const students=subject?.isGeneral?[]:subject?.students||[];
-  const recorded=students.filter(student=>['present','absent','late10','lateMore10'].includes(attendance[student.id]?.status)).length;
-  return {hasDiary,recorded,total:students.length,complete:students.length>0&&recorded===students.length};
+  const notHeld=logs.some(log=>log.notHeld);
+  const recorded=notHeld?0:students.filter(student=>['present','absent','late10','lateMore10'].includes(attendance[student.id]?.status)).length;
+  return {hasDiary,notHeld,notHeldReason:logs.find(log=>log.notHeld)?.notHeldReason||'',recorded,total:notHeld?0:students.length,complete:!notHeld&&students.length>0&&recorded===students.length};
 }
+

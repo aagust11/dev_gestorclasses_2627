@@ -1,3 +1,4 @@
+import {addSubstitution,substitutionSlots} from '../utils/substitutions';
 import BookmarkBar from './BookmarkBar';
 import TimetableSettings from './TimetableSettings';
 import StudentImportReview from './StudentImportReview';
@@ -122,6 +123,7 @@ export default function ConfiguracioView({
   const [subType, setSubType] = useState<'subject' | 'other'>('subject');
   const [subSubjectId, setSubSubjectId] = useState('');
   const [subCustomReason, setSubCustomReason] = useState('');
+  const subSlots=substitutionSlots(state,subDate);
 
   const handleAddSubstitution = (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,20 +144,10 @@ export default function ConfiguracioView({
       return;
     }
 
-    const nextSubstitutions = [...(state.config.substitutions || [])];
-    const newSub = {
-      id: `sub_${Date.now()}`,
-      date: subDate,
-      timeSlotId: subTimeSlotId,
-      type: subType,
-      subjectId: subType === 'subject' ? subSubjectId : undefined,
-      customReason: subType === 'other' ? subCustomReason.trim() : undefined,
-    };
-    nextSubstitutions.push(newSub);
-
-    updateConfigState(draft => {
-      draft.substitutions = nextSubstitutions;
-    });
+    try{
+      const next=addSubstitution(state,{date:subDate,timeSlotId:subTimeSlotId,type:subType,...(subType==='subject'?{subjectId:subSubjectId}:{customReason:subCustomReason.trim()})});
+      if(onChangeState(next,state)===false)return;
+    }catch(error){alert((error as Error).message);return;}
 
     setSubDate('');
     setSubTimeSlotId('');
@@ -166,6 +158,7 @@ export default function ConfiguracioView({
   };
 
   const handleRemoveSubstitution = (subId: string) => {
+    if(state.sessionLogs.some(l=>l.scheduleItemId===subId||l.blockMemberIds?.includes(subId))){alert('La substitució té un registre desat. Obre la sessió i marca «Classe no feta» si cal; no s’elimina per conservar-ne l’històric.');return;}
     if(!window.confirm('Eliminar aquesta substitució? L’horari tornarà a aplicar la programació habitual.'))return;
     const nextSubstitutions = (state.config.substitutions || []).filter(s => s.id !== subId);
     updateConfigState(draft => {
@@ -320,7 +313,7 @@ export default function ConfiguracioView({
     }
 
     const newSub: Subject = {
-      id: `sub_${Date.now()}`,
+      id: `sub_${crypto.randomUUID()}`,
       name: subName,
       color: subColor,
       isGeneral: subIsGeneral,
@@ -1559,6 +1552,7 @@ export default function ConfiguracioView({
           ========================================== */}
       {activeTab === 'substitutions' && (
         <div id="panel-substitutions" className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn text-slate-800">
+          <p className="lg:col-span-3 text-xs text-slate-600">Si una classe no s’ha fet, obre-la des de l’horari i marca «Classe no feta» a la capçalera. Fes servir les substitucions per canviar la matèria d’una franja sense registre previ.</p>
           {/* List of Substitutions */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
@@ -1625,7 +1619,7 @@ export default function ConfiguracioView({
                     type="date"
                     required
                     value={subDate}
-                    onChange={(e) => setSubDate(e.target.value)}
+                    onChange={(e) => {setSubDate(e.target.value);setSubTimeSlotId('');}}
                     className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-505"
                   />
                 </div>
@@ -1639,7 +1633,7 @@ export default function ConfiguracioView({
                     className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-white font-semibold"
                   >
                     <option value="">-- Tria una franja --</option>
-                    {state.config.timeSlots.map(ts => (
+                    {subSlots.map(ts => (
                       <option key={ts.id} value={ts.id}>
                         {ts.name} {ts.startTime && ts.endTime ? `(${ts.startTime} - {ts.endTime})` : ''}
                       </option>
@@ -1682,7 +1676,7 @@ export default function ConfiguracioView({
                       className="w-full text-slate-800 text-xs p-3 border border-slate-200 rounded-xl bg-white font-semibold"
                     >
                       <option value="">-- Tria matèria --</option>
-                      {state.subjects.map(sub => (
+                      {state.subjects.filter(sub=>!sub.isParent).map(sub => (
                         <option key={sub.id} value={sub.id}>{sub.name}</option>
                       ))}
                     </select>
@@ -2063,3 +2057,4 @@ export default function ConfiguracioView({
     </div>
   );
 }
+

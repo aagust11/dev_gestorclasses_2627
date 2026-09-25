@@ -22,7 +22,7 @@ function render(){
   // Preserve drafts and open editors during live updates; never discard unsent text.
   captureDrafts();displayedTarget=JSON.stringify(target());const drafts=draftSessions.get(displayedTarget)||new Map();
   root.replaceChildren();if(!snapshot)return;
-  const s=snapshot.summary;$('summary').textContent=`${s.present} presents (inclou ${s.late} retards) · ${s.absent} faltes · ${s.pending} pendents`;
+  const s=snapshot.summary;$('summary').textContent=snapshot.notHeld?('Classe no feta'+(snapshot.notHeldReason?' · '+snapshot.notHeldReason:'')):`${s.present} presents (inclou ${s.late} retards) · ${s.absent} faltes · ${s.pending} pendents`;
   $('all').hidden=!snapshot.canAttend;
   $('all').textContent=s.recorded===0?'Tots presents':'Marcar pendents com a presents';
   for(const student of snapshot.students){
@@ -53,7 +53,7 @@ async function load(){
   if(busy)return;captureDrafts();const selectedDate=$('date').value;status('Carregant dades en segon pla…');
   try{const res=await rpc('GET_CONTEXT',{date:selectedDate});if(selectedDate!==$('date').value)return;if(!res.ok)throw Error(res.error);
     const old=$('session').value;$('session').replaceChildren();
-    for(const s of res.data.sessions)$('session').add(new Option(`${s.startTime}–${s.endTime} · ${s.name}`,s.id));
+    for(const s of res.data.sessions)$('session').add(new Option(`${s.startTime}–${s.endTime} · ${s.name}${s.notHeld?' · No feta':''}`,s.id));
     if(res.data.sessions.some(s=>s.id===old))$('session').value=old;else if(res.data.current[0]&&res.data.date===$('date').value)$('session').value=res.data.current[0].id;
     hasError=false;
     if(!$('session').value){snapshot=null;$('students').replaceChildren();$('summary').textContent='';$('all').hidden=true;status('No hi ha sessions en aquesta data.');}else await loadSession();

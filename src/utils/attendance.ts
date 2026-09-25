@@ -19,15 +19,16 @@ export function subjectAttendance(state:AppState,subject:Subject,periodId='annua
   if(term){const end=term.endDate<today?term.endDate:today;
     if(term.startDate<=end){
       for(const session of getProgrammedSessionsForSubject(state,subject.id,term.startDate,end))rows.set(`${session.scheduleItemId}_${session.date}`,{});
-      for(const log of effectiveSessionLogs(state))if(log.subjectId===subject.id&&log.date>=term.startDate&&log.date<=end)rows.set(`${log.scheduleItemId}_${log.date}`,log.attendance||{});
+      for(const log of effectiveSessionLogs(state))if(log.subjectId===subject.id&&log.date>=term.startDate&&log.date<=end){const key=`${log.scheduleItemId}_${log.date}`;if(log.notHeld)rows.delete(key);else rows.set(key,log.attendance||{});}
     }
   }
   const result=Object.fromEntries(subject.students.map(st=>[st.id,summarizeAttendance([...rows.values()].map(row=>row[st.id]))]));entry.values.set(key,result);return result;
 }
 export function studentAttendance(state:AppState,studentId:string,periodId='annual',subjectId='all',today=toIsoDate(new Date())) {
   const term=periodId==='annual'?state.config:state.config.terms.find(t=>t.id===periodId);
-  const summaries=studentSubjects(state,studentId).filter(s=>!s.isGeneral&&!s.isParent&&(subjectId==='all'||s.id===subjectId)).map(s=>s.students.some(st=>st.id===studentId)?subjectAttendance(state,s,periodId,today)[studentId]:summarizeAttendance(effectiveSessionLogs(state).filter(l=>l.subjectId===s.id&&term&&l.date>=term.startDate&&l.date<=term.endDate&&l.date<=today&&Object.hasOwn(l.attendance,studentId)).map(l=>l.attendance[studentId])));
+  const summaries=studentSubjects(state,studentId).filter(s=>!s.isGeneral&&!s.isParent&&(subjectId==='all'||s.id===subjectId)).map(s=>s.students.some(st=>st.id===studentId)?subjectAttendance(state,s,periodId,today)[studentId]:summarizeAttendance(effectiveSessionLogs(state).filter(l=>!l.notHeld&&l.subjectId===s.id&&term&&l.date>=term.startDate&&l.date<=term.endDate&&l.date<=today&&Object.hasOwn(l.attendance,studentId)).map(l=>l.attendance[studentId])));
   const result={present:0,late:0,absent:0,recorded:0,pending:0,total:0,rate:null as number|null};
   for(const item of summaries)for(const key of ['present','late','absent','recorded','pending','total'] as const)result[key]+=item[key];
   result.rate=result.recorded?Math.round(result.present/result.recorded*100):null;return result;
 }
+

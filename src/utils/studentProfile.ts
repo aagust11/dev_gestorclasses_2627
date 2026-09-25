@@ -11,7 +11,7 @@ export const sessionComments=(log:StudentLog,kind:'pos'|'regular'|'incident'):st
 export function studentSessionHistory(state:AppState,studentId:string,periodId='annual',subjectId='all') {
   const subjects=studentSubjects(state,studentId);
   const term=state.config.terms.find(t=>t.id===periodId);
-  return effectiveSessionLogs(state).filter(log=>subjects.some(s=>s.id===log.subjectId) && (subjectId==='all'||subjectId===log.subjectId) && (periodId==='annual'||!!term&&log.date>=term.startDate&&log.date<=term.endDate))
+  return effectiveSessionLogs(state).filter(log=>!log.notHeld&&subjects.some(s=>s.id===log.subjectId) && (subjectId==='all'||subjectId===log.subjectId) && (periodId==='annual'||!!term&&log.date>=term.startDate&&log.date<=term.endDate))
     .flatMap(log=>log.attendance[studentId]?[{...log,studentLog:log.attendance[studentId]}]:[])
     .sort((a,b)=>b.date.localeCompare(a.date)||a.id.localeCompare(b.id));
 }
@@ -20,3 +20,4 @@ export function hasStudentSupport(state:AppState,studentId:string):boolean {
   const profile=state.studentProfiles?.[studentId];
   return !!(profile?.psi?.trim()||profile?.supportMeasures?.trim());
 }
+

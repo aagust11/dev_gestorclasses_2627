@@ -72,7 +72,7 @@ export default function SessionView({
   const {sort,toggle}=useTableSort();
 
   // 1. Locate current schedule layout slot or substitution
-  const isSubstitution = scheduleItemId.startsWith('sub_');
+  const isSubstitution = !!state.config.substitutions?.some(s=>s.id===scheduleItemId);
   const substitution = isSubstitution
     ? state.config.substitutions?.find(s => s.id === scheduleItemId)
     : undefined;
@@ -141,6 +141,7 @@ export default function SessionView({
   ) => {
     if (!subject) return;
     const updatedLog: SessionLog = {
+      ...existingLog,
       id: existingLog?.id || logKey,
       scheduleItemId,
       subjectId: subject.id,
@@ -376,6 +377,12 @@ export default function SessionView({
           </div>
         </div>
 
+        {!subject.isGeneral&&<div className="flex flex-wrap items-center gap-2 text-xs">
+          <label className="inline-flex items-center gap-1.5 cursor-pointer font-semibold text-slate-700" title="Exclou aquesta sessió del còmput d’assistència, sense esborrar-ne les dades">
+            <input type="checkbox" checked={!!existingLog?.notHeld} onChange={e=>onSaveSessionLog({...existingLog,id:existingLog?.id||logKey,scheduleItemId,subjectId:subject.id,date:dateStr,comments,nextSessionNotes,attendance,notHeld:e.target.checked})}/> Classe no feta
+          </label>
+          {existingLog?.notHeld&&<input aria-label="Motiu de la classe no feta" placeholder="Motiu: sortida, vaga, absència…" className="w-56 max-w-full rounded border border-slate-200 px-2 py-1" value={existingLog.notHeldReason||''} onChange={e=>onSaveSessionLog({...existingLog,notHeldReason:e.target.value})}/>}
+        </div>}
         {/* Center/Right: Task indicators & Session navigation */}
         <div className="flex items-center flex-wrap gap-2.5">
           
@@ -493,7 +500,8 @@ export default function SessionView({
         {subject.isGeneral&&<div className="session-attendance"><BookmarkBar state={state} subject={subject} onChangeState={onChangeState}/></div>}
         
         {/* LEFT COLUMN: Compact Attendance & Conduct Table (7 cols) */}
-        {!subject.isGeneral && <div className="session-attendance">
+        {!subject.isGeneral&&existingLog?.notHeld&&<p className="text-xs text-amber-800 px-3 py-2 bg-amber-50 rounded-lg">Classe no feta · No compta com a assistència pendent ni com a falta. El diari i els registres previs es conserven; desmarca el tick per reactivar-la.</p>}
+        {!subject.isGeneral && !existingLog?.notHeld && <div className="session-attendance">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xs overflow-hidden">
             
             {/* Table Header Bar */}

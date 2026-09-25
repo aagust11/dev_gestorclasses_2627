@@ -116,7 +116,7 @@ export default function RendimentView({ state }: RendimentViewProps) {
   const activeSubjectSessions = useMemo(() => {
     if (!selectedSubId || isPosterior) return [];
     return effectiveSessionLogs(state).filter(log => 
-      log.subjectId === selectedSubId &&
+      !log.notHeld && log.subjectId === selectedSubId &&
       log.date >= calculationPeriod.startDate &&
       log.date <= calcEndDate
     );
@@ -633,3 +633,4 @@ export default function RendimentView({ state }: RendimentViewProps) {
     </div>
   );
 }
+

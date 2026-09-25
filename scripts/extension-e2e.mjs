@@ -57,6 +57,18 @@ try{
  assert.match(await app.locator('body').innerText(),/Anotació de prova/);
  const webPupil=app.locator('tr').filter({hasText:'Àlex'}).first();await webPupil.getByRole('button',{name:'Pres.',exact:true}).click();
  await panel.waitForFunction(()=>document.querySelector('article .present')?.getAttribute('aria-pressed')==='true',{timeout:15000});
+ // Cancel a class without destroying attendance or diary; refresh and reverse it.
+ await app.getByRole('checkbox',{name:'Classe no feta',exact:true}).check();
+ await app.getByRole('textbox',{name:'Motiu de la classe no feta'}).fill('Sortida del grup');
+ await app.locator('#session-comments-area').fill('Diari conservat');
+ result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.data.notHeld,true);assert.equal(result.data.students.length,0);
+ const refused=await rpc('SET_ATTENDANCE',{date,sessionId:'session',studentId:'p',status:'absent'});assert.equal(refused.ok,false);
+ await app.locator('#btn-back-to-horari').click();await app.getByText('⊘ No feta',{exact:true}).waitFor();
+ await app.reload();await app.locator('#horari-view-root button').filter({hasText:'Grup de prova'}).click();
+ assert.equal(await app.getByRole('textbox',{name:'Motiu de la classe no feta'}).inputValue(),'Sortida del grup');
+ assert.equal(await app.locator('#session-comments-area').inputValue(),'Diari conservat');
+ await app.getByRole('checkbox',{name:'Classe no feta',exact:true}).uncheck();
+ result=await rpc('GET_SESSION',{date,sessionId:'session'});assert.equal(result.data.notHeld,false);assert.equal(result.data.summary.present,2);
  // Slow shared file/other tab: data and navigation must not queue behind synchronization.
  await app.evaluate(async()=>{
   window.testLockAcquired=false;

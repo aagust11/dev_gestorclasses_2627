@@ -17,6 +17,8 @@ export interface StudentLog {
 }
 
 export interface SessionLog {
+  notHeld?: boolean;
+  notHeldReason?: string;
   blockMemberIds?: string[];
   startTime?: string;
   endTime?: string;

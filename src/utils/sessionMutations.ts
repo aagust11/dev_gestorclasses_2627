@@ -27,14 +27,15 @@ function resolve(state:AppState,target:SessionTarget){
 export function getSessionSnapshot(state:AppState,target:SessionTarget){
   const {subject,log}=resolve(state,target);
   const collator=new Intl.Collator('ca',{sensitivity:'base',numeric:true});
-  const students=subject.isGeneral?[]:[...subject.students].sort((a,b)=>collator.compare(classroomName(a),classroomName(b))||collator.compare(a.name,b.name)||a.id.localeCompare(b.id)).map(st=>{
+  const students=subject.isGeneral||log.notHeld?[]:[...subject.students].sort((a,b)=>collator.compare(classroomName(a),classroomName(b))||collator.compare(a.name,b.name)||a.id.localeCompare(b.id)).map(st=>{
     const entry=log.attendance[st.id];
     return {id:st.id,name:classroomName(st),officialName:st.name,status:entry?.status||'pending',annotations: Object.fromEntries((['pos','regular','incident'] as const).map(k=>[k,entry?.[`${k}Comments`]??(entry?.[`${k}Comment`]?[entry[`${k}Comment`]]:[])]))};
   });
-  return {...target,subjectId:subject.id,name:subject.name,students,summary:summarizeAttendance(students.map(st=>({status:st.status}))),canAttend:!subject.isGeneral&&students.length>0};
+  return {...target,notHeld:!!log.notHeld,notHeldReason:log.notHeldReason||'',subjectId:subject.id,name:subject.name,students,summary:summarizeAttendance(students.map(st=>({status:st.status}))),canAttend:!subject.isGeneral&&students.length>0};
 }
 function mutate(state:AppState,target:SessionTarget,studentIds:string[],fn:(entry:StudentLog|undefined)=>StudentLog){
   const {block,subject,log}=resolve(state,target);
+  if(log.notHeld)throw Error('Classe marcada com a no feta. Reactiva-la des d’Àula abans de passar llista.');
   if(subject.isGeneral||!studentIds.length||studentIds.some(id=>!subject.students.some(st=>st.id===id)))throw Error('Alumne fora de la matrícula activa d’aquesta sessió.');
   const attendance={...log.attendance};for(const id of studentIds)attendance[id]=fn(attendance[id]);
   return storeBlockLog(state,block,target.date,{...log,attendance});

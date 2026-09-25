@@ -109,7 +109,7 @@ test('general daily diaries preserve legacy notes and remain isolated by day and
 
 test('timetable indicators distinguish empty, partial and complete attendance and diary text',()=>{
  const state=fixture(),block=getDayBlocks(state,date)[0];
- assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:false,recorded:0,total:1,complete:false});
+ assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:false,notHeld:false,notHeldReason:'',recorded:0,total:1,complete:false});
  state.sessionLogs=[{...log('b'),comments:'  ',nextSessionNotes:'Preparar',attendance:{p:{status:'pending',regularComments:['Comentari']}}}];
  assert.equal(sessionIndicators(state,block,date).hasDiary,false);
  assert.equal(sessionIndicators(state,block,date).recorded,0);
@@ -119,7 +119,7 @@ test('timetable indicators distinguish empty, partial and complete attendance an
  assert.equal(sessionIndicators(state,block,date).complete,false);
  state.sessionLogs[0].attendance.q={status:'late10'};
  state.sessionLogs[0].comments='Diari escrit';
- assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,recorded:2,total:2,complete:true});
+ assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,notHeld:false,notHeldReason:'',recorded:2,total:2,complete:true});
  state.sessionLogs.push(log('a','present'));
  assert.equal(sessionIndicators(state,block,date).recorded,1); // conflicting legacy attendance remains pending
  assert.equal(sessionIndicators(state,block,'2026-09-21').recorded,0);
@@ -127,7 +127,23 @@ test('timetable indicators distinguish empty, partial and complete attendance an
 test('general action diary indicators appear in all daily slots without attendance',()=>{
  const state=fixture();state.subjects[0].isGeneral=true;state.config.timeSlots[1].startTime='10:30';
  state.sessionLogs=[log('a')];
- for(const block of getDayBlocks(state,date))assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,recorded:0,total:0,complete:false});
+ for(const block of getDayBlocks(state,date))assert.deepEqual(sessionIndicators(state,block,date),{hasDiary:true,notHeld:false,notHeldReason:'',recorded:0,total:0,complete:false});
  state.sessionLogs[0].comments='';
  assert.equal(sessionIndicators(state,getDayBlocks(state,date)[1],date).hasDiary,false);
+});
+
+
+test('class not held preserves history, survives JSON and is excluded from student attendance',()=>{
+ let state=fixture();const block=getDayBlocks(state,date)[0];
+ const log:SessionLog={id:'saved',scheduleItemId:block.id,subjectId:'s',date,comments:'Diari',attendance:{p:{status:'absent',incidentComments:['Conservat']}},notHeld:true,notHeldReason:'Sortida'};
+ state=storeBlockLog(state,block,date,log);
+ assert.equal(validateState(JSON.parse(JSON.stringify(state))),true);
+ assert.deepEqual(subjectAttendance(state,state.subjects[0],'annual',date).p,{present:0,late:0,absent:0,recorded:0,pending:0,total:0,rate:null});
+ assert.equal(studentSessionHistory(state,'p').length,0);
+ assert.equal(sessionIndicators(state,getDayBlocks(state,date)[0],date).notHeld,true);
+ assert.equal(state.sessionLogs[0].attendance.p.status,'absent');assert.equal(state.sessionLogs[0].comments,'Diari');
+ state=storeBlockLog(state,block,date,{...state.sessionLogs[0],notHeld:false});
+ assert.equal(subjectAttendance(state,state.subjects[0],'annual',date).p.absent,1);
+ assert.equal(studentSessionHistory(state,'p')[0].studentLog.incidentComments?.[0],'Conservat');
+ assert.equal(validateState({...state,sessionLogs:[{...state.sessionLogs[0],notHeld:'yes'}]}),false);
 });

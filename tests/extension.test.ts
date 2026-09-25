@@ -107,3 +107,13 @@ test('opening a session for review does not require consistent attendance record
  assert.equal((await dispatch(req('OPEN_SESSION',target))).ok,true);assert.equal(opened,true);
  assert.equal((await dispatch(req('SET_ATTENDANCE',{...target,studentId:'p',status:'present'}))).ok,false);
 });
+
+test('not-held classes stay selectable for review but cannot receive extension attendance',()=>{
+ let state=setStudentAttendance(fixture(),target,'p','absent');state.sessionLogs[0].notHeld=true;
+ assert.equal(getCurrentClassContext(state,new Date(date+'T09:30:00')).current.length,0);
+ assert.equal(sessionsOnDate(state,date)[0].notHeld,true);
+ assert.equal(getSessionSnapshot(state,target).canAttend,false);
+ assert.equal(getSessionSnapshot(state,target).summary.total,0);
+ assert.throws(()=>setStudentAttendance(state,target,'p','present'),/no feta/);
+ assert.equal(state.sessionLogs[0].attendance.p.status,'absent');
+});
