@@ -189,6 +189,7 @@ export interface StudentActivityGrade {
 }
 
 export interface CurricularActivity {
+  gradingComment?: string;
   assessmentType?: 'graded' | 'completion';
   numericAspects?: NumericAspect[];
   criteriaTests?: Record<string,TestScoring>;

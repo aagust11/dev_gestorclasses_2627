@@ -22,8 +22,12 @@ export default function ActivityGradePage({state,activity,subject,onChange,onBac
   ...(activity.criteriaIds||[]).map(id=>({id,kind:'criterion' as const}))
  ];
  if(!rows.length)rows.push({id:'',kind:'global'});
- const clear=()=>{if(window.confirm('Esborrar totes les notes, exempcions i comentaris d’aquesta activitat?'))onChange({...state,activities:(state.activities||[]).map(a=>a.id===activity.id?{...a,grades:{}}:a)});};
+ const clear=()=>{if(window.confirm('Esborrar totes les notes, exempcions i comentaris dels alumnes d’aquesta activitat? El comentari general es conservarà.'))onChange({...state,activities:(state.activities||[]).map(a=>a.id===activity.id?{...a,grades:{}}:a)});};
  return <DetailPage title={`Avaluar · ${activity.code}`} subtitle={`${activity.title} · ${subject.name}`} onBack={onBack} actions={<><span className="text-sm text-slate-500 self-center">Desat automàtic</span><button className="ds-button" onClick={()=>exportActivitiesToExcel(subject,[activity],state.criteria,subject.students)}>Exportar Excel</button><button className="ds-button text-rose-700" onClick={clear}>Esborrar notes</button></>}>
+  <div className="ds-panel">
+   <label htmlFor="activity-grading-comment" className="block text-sm font-semibold mb-2">Comentari general de l’activitat</label>
+   <textarea id="activity-grading-comment" rows={2} className="block w-full resize-y" placeholder="Data de correcció, observacions generals…" value={activity.gradingComment||''} onChange={e=>{const gradingComment=e.target.value;onChange({...state,activities:(state.activities||[]).map(a=>a.id===activity.id?{...a,gradingComment}:a)});}}/>
+  </div>
   <div className="ds-panel flex flex-wrap justify-between gap-3 items-center"><input aria-label="Cercar alumne" placeholder="Cercar alumne…" value={search} onChange={e=>setSearch(e.target.value)}/><span className="text-sm">{subject.students.length} alumnes · Lliurament {activity.endDate}</span><span className="text-sm">{completion?'Fet / No fet · seguiment sense nota numèrica':`AS ≥ ${settings.thresholds.AS} · AN ≥ ${settings.thresholds.AN} · AE ≥ ${settings.thresholds.AE} /4`}</span></div>
   {!!activity.numericAspects?.length&&!completion&&<p className="text-sm text-slate-600">Els subítems determinen la nota de l’ítem numèric. Els criteris vinculats s’avaluen separadament per al seguiment competencial.</p>}
   <div className="grade-table-wrap"><table className="grade-table"><thead><tr><th aria-sort={sort.direction==='asc'?'ascending':'descending'}><SortButton label="Alumne/a" column="name" sort={sort} onSort={toggle}/></th><th>Criteri / aspecte</th><th>Qualificació</th><th>Activitat</th><th>Comentari de l’alumne</th></tr></thead>
