@@ -972,7 +972,15 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
               ) : (
                 <div className="space-y-4">
                   {/* Direct Activities list */}
-                  {activitiesForSubject.direct.map((act) => {
+                  {([
+                    {status:'pending_correction',label:'Pendents de corregir'},
+                    {status:'open',label:'Obertes / En curs'},
+                    {status:'not_open',label:'Pendents d’obrir'},
+                    {status:'corrected',label:'Corregides'}
+                  ] as const).map(group=>{
+                    const groupedActivities=activitiesForSubject.direct.filter(act=>resolveActivityStatus(act).effectiveStatus===group.status);
+                    if(!groupedActivities.length)return null;
+                    const cards=groupedActivities.map((act) => {
                     const actCriteria = state.criteria.filter(cr => act.criteriaIds?.some(id=>sourceCriterionId(act,id)===cr.id));
                     const term = state.config.terms.find(t => t.id === act.termId);
                     const isCurrentlyGrading = selectedActIdForGrading === act.id;
@@ -1123,6 +1131,10 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
                       </div>
                     );
+                    });
+                    return group.status==='corrected'
+                      ? <details key={`${activeSubject.id}:${group.status}`} className="border-t border-slate-200 pt-4"><summary className="cursor-pointer font-bold text-slate-600">{group.label} ({groupedActivities.length})</summary><div className="space-y-4 mt-3">{cards}</div></details>
+                      : <section key={group.status} className="space-y-3"><h4 className="font-bold text-sm text-slate-700">{group.label} ({groupedActivities.length})</h4>{cards}</section>;
                   })}
 
                   {/* Mother inherited list copy mechanism */}
