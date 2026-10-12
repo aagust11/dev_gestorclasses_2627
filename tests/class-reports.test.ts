@@ -41,3 +41,11 @@ test('individual and class Word/PDF generate with teacher and footer, including 
   const pdfText=Buffer.from(await outputs[3].arrayBuffer()).toString('latin1');assert.match(pdfText,/^%PDF/);assert.equal(group.teacher?.email,'docent@example.org');
   if(process.env.REPORT_QA_DIR){await mkdir(process.env.REPORT_QA_DIR,{recursive:true});for(let i=0;i<outputs.length;i++)await writeFile(`${process.env.REPORT_QA_DIR}/${['student.docx','student.pdf','class.docx','class.pdf'][i]}`,Buffer.from(await outputs[i].arrayBuffer()));}
 });
+
+
+test('group evaluation comments survive validated JSON and reject invalid nested values',()=>{
+ const state=fixture();state.groupPeriodComments={s:{t1:'Valoració del primer trimestre',annual:'Valoració del curs'}};
+ const restored=JSON.parse(JSON.stringify(state));assert.ok(inspectImport(restored).valid);
+ assert.equal(restored.groupPeriodComments.s.t1,'Valoració del primer trimestre');
+ restored.groupPeriodComments.s.t1=42;assert.equal(inspectImport(restored).valid,false);
+});

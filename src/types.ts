@@ -255,6 +255,7 @@ export interface AppState {
   enrolments?: Record<string,string[]>;
   identityArchive?: {legacyId:string;profile:unknown}[];
   studentProfiles?: Record<string, {notes?: string; internalNotes?: string; psi?: string; supportMeasures?: string; additionalComments?: string}>;
+  groupPeriodComments?: Record<string, Record<string, string>>; // subject → period; shared by all methods
   periodComments?: Record<string, Record<string, Record<string, string>>>; // subject → period → student; shared by all methods
   config: {
     timetable?: {startTime:string;endTime:string;slotMinutes:number};
