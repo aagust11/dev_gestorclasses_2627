@@ -81,7 +81,7 @@ test('Mitjana, mediana i moda recomputen els CA i CE, no només la casella final
   assert.equal(weightedStatistic([{score:0,weight:1},{score:4,weight:1}],'mode'),0);
 });
 
-test('CA i CE manuals es conserven, actualitzen els dependents i el límit de CE força NA',()=>{
+test('CA i CE manuals es conserven; la nota final manual preval sobre el límit de CE',()=>{
   const s=sub(), as=[act({grades:numericGrade(10)})];
   let g=calc(s,as);
   g.criteria.ca1={score:1,qual:'NA',isManual:true};
@@ -93,6 +93,9 @@ test('CA i CE manuals es conserven, actualitzen els dependents i el límit de CE
   s.compSettings!.maxFailedCompetencies=1;
   g.competencies.ce1={score:1,qual:'NA',isManual:true};
   g.finalGrade={score:4,qual:'AE',isManual:true};
+  g=calculateCompetencialTermGrades(s,as,comps,criteria,{u:g}).u;
+  assert.equal(g.finalGrade.qual,'AE');assert.equal(g.finalGrade.autoFailed,false);
+  g.finalGrade.isManual=false;
   g=calculateCompetencialTermGrades(s,as,comps,criteria,{u:g}).u;
   assert.equal(g.finalGrade.qual,'NA');assert.equal(g.finalGrade.autoFailed,true);
 });
@@ -359,3 +362,18 @@ test('Rendiment mostra la nota d’activitats i no la puntuació històrica de s
  const performance=render(RendimentView,{state}),grades=render(QualificacionsView,{state,onChangeState:()=>{}});assert.ok(performance.includes('3.20'));assert.ok(grades.includes('3.20'));assert.ok(performance.includes('Puntuacions històriques'));
 });
 
+
+
+test('Manual final grades derive qualitative labels from current thresholds for every calculation method',()=>{
+ const subject=sub();subject.compSettings!.maxFailedCompetencies=1;
+ subject.compSettings!.thresholds={AS:2,AN:2.8,AE:3.6};
+ const activities=[act({grades:numericGrade(0)})];
+ for(const method of ['mean','median','mode'] as const){
+  for(const [score,qual] of [[1.9,'NA'],[2,'AS'],[2.8,'AN'],[3.6,'AE']] as const){
+   const previous=calc(subject,activities);previous.finalGrade={score,qual:'NA',isManual:true};
+   const result=calculateCompetencialTermGrades(subject,activities,comps,criteria,{u:previous},method).u;
+   assert.equal(result.finalGrade.score,score);assert.equal(result.finalGrade.qual,qual);
+   assert.equal(result.finalGrade.failedCECount,1);assert.equal(result.finalGrade.autoFailed,false);
+  }
+ }
+});

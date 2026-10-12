@@ -273,9 +273,10 @@ function computeCompetencial(subject: Subject, activities: CurricularActivity[],
       if (score !== null) ce[comp.id]=asGrade(score);
     }
     const failed=Object.values(ce).filter(x=>x.score < settings.thresholds.AS).length;
-    const autoFailed=!!settings.maxFailedCompetencies && failed>=settings.maxFailedCompetencies;
     const score=weightedStatistic(Object.values(ce).map(x=>({score:x.score,weight:1})),mode);
     const manual=old?.finalGrade?.isManual && valid(old.finalGrade.score);
+    // An explicit final score overrides the automatic failed-competency rule.
+    const autoFailed=!manual && !!settings.maxFailedCompetencies && failed>=settings.maxFailedCompetencies;
     const finalScore=manual ? old.finalGrade.score : score;
     result[st.id]={criteria:ca,competencies:ce,finalGrade:{score:finalScore,qual:finalScore === null ? '' : autoFailed ? 'NA' : scoreToCompetencial(finalScore,settings.thresholds),isManual:manual,failedCECount:failed,autoFailed}};
   }
