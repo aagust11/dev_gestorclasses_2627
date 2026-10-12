@@ -1209,11 +1209,11 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
             
             {/* 2. CURRICULAR COMPETENCY MAP ACCORDING TO ACTIVITIES */}
             {/* "L'assignació de competències es fa a partir dels criteris d'avaluació que s'assignin a les activitats." */}
-            <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-              <h3 className="font-bold text-slate-900 text-xs flex items-center gap-1.5 uppercase tracking-wider">
-                <Award className="w-4.5 h-4.5 text-indigo-500 shrink-0" />
+            <details key={activeSubject.id} className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+              <summary className="font-bold text-slate-900 text-xs cursor-pointer uppercase tracking-wider">
+                <Award className="inline-block w-4.5 h-4.5 text-indigo-500 mr-1.5" aria-hidden="true" />
                 <span>Estat de cobertura de Competències</span>
-              </h3>
+              </summary>
               
               <p className="text-[11px] text-slate-400 leading-normal font-normal">
                 Les competències i criteris es consideren "coberts" o "avaluats" de manera activa un cop els has vinculat a les activitats d'aquest trimestre/curs.
@@ -1275,7 +1275,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
                   })}
                 </div>
               )}
-            </div>
+            </details>
             
           </div>
         </div>
