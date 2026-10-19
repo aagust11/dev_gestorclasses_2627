@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {getInitialState} from '../src/initialState';
 import {AppState,CurricularActivity,Subject} from '../src/types';
 import {registerRecovery,closeEvaluation,reopenEvaluation,annulRecovery,prepareRecovery,createRecoveryTask,setRecoveryPending} from '../src/utils/recoveries';
-import {recoveryScore,recoveryQual,DEFAULT_RECOVERY,closedPeriod} from '../src/utils/recoveryModel';
+import {recoveryScore,recoveryQual,DEFAULT_RECOVERY,closedPeriod,preservesRecoveryEvidence} from '../src/utils/recoveryModel';
 import {periodGrades} from '../src/utils/gradeSelectors';
 import {getActivityScore,getCriterionScore,activitySummary,buildActivitiesWorkbook,DEFAULT_COMP_SETTINGS} from '../src/utils/gradeCalculations';
 import {inspectImport} from '../src/utils/importValidation';
@@ -108,4 +108,12 @@ test('test and numeric aspect recoveries keep their own raw evidence and weighti
  s=registerRecovery(s,'a','u',{...input(),evidence:{'aspect:test':{testAnswers:{correct:10,blank:0,incorrect:0}},'aspect:exercise':{rawScore:20,maxScore:20}}});
  const results=activity(s).recoveries!.u.attempts[0].results;
  assert.equal(results[0].evidence.testAnswers!.correct,10);assert.equal(results[1].evidence.rawScore,20);assert.equal(grade(s).qual,'AN');assert.ok(inspectImport(s).valid,JSON.stringify(inspectImport(s).issues));
+});
+
+test('editing a parent cannot invalidate recovery evidence in a child; descriptive edits remain possible',()=>{
+ const s=registerRecovery(fixture(),'a','u',input()),a=activity(s);
+ assert.equal(preservesRecoveryEvidence(a,{...a,title:'Revised',weight:3}),true);
+ assert.equal(preservesRecoveryEvidence(a,{...a,criteriaIds:[]}),false);
+ assert.equal(preservesRecoveryEvidence(a,{...a,criteriaMaxScores:{ca:10}}),false);
+ assert.equal(preservesRecoveryEvidence(a,{...a,criteriaReferences:{ca:'different'}}),false);
 });

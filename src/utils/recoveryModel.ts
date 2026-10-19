@@ -25,3 +25,12 @@ export function latestPeriodEvent(state:AppState,subjectId:string,periodId:strin
 export function closedPeriod(state:AppState,subjectId:string,periodId:string){const e=latestPeriodEvent(state,subjectId,periodId);return e?.action==='close'?e:undefined;}
 export function periodActivitySource(state:AppState,subjectId:string,periodId:string){return closedPeriod(state,subjectId,periodId)?.activities||state.activities||[];}
 export function periodCommentsFor(state:AppState,subjectId:string,periodId:string){return closedPeriod(state,subjectId,periodId)?.comments||state.periodComments?.[subjectId]?.[periodId]||{};}
+
+/** Keep the meaning of original evidence stable, including parent-to-child edits. */
+export function preservesRecoveryEvidence(before:CurricularActivity,after:CurricularActivity):boolean{
+ if(!Object.keys(before.recoveries||{}).length)return true;
+ if((before.assessmentType||'graded')!==(after.assessmentType||'graded'))return false;
+ const signature=(a:CurricularActivity,s:RecoverySlot)=>JSON.stringify([s.key,s.format,s.max,s.format==='test'?(s.test||{questions:10,correct:1,blank:0,incorrect:-0.25}):null,s.kind==='criterion'?(a.criteriaReferences?.[s.id]||s.id):null]);
+ const next=recoverySlots(after);
+ return recoverySlots(before).every(slot=>next.some(s=>signature(before,slot)===signature(after,s)));
+}

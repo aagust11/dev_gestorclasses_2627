@@ -1,3 +1,4 @@
+import {preservesRecoveryEvidence} from '../utils/recoveryModel';
 import RecoveryTasksPage from './RecoveryTasksPage';
 import NumericAspectsEditor from './NumericAspectsEditor';
 import {TestScoringFields} from './TestScoringFields';
@@ -264,7 +265,6 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       return;
     }
 
-    if(editingId&&Object.keys(existingActivities.find(a=>a.id===editingId)?.recoveries||{}).length){alert('Aquesta activitat té un historial de recuperacions. Es conserva la configuració original per mantenir la coherència dels criteris i pesos. Pots canviar la política a Qualificar.');return;}
     const nextActivity: CurricularActivity = {
       ...existingActivities.find(a=>a.id===editingId),
       id: editingId || 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -291,6 +291,9 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       grades: preserveLegacyCriterionGrades(existingActivities.find(a => a.id === editingId))
     };
 
+    const original=existingActivities.find(a=>a.id===editingId);
+    const protectedActivities=existingActivities.filter(a=>a.id===editingId||(activeSubject.isParent&&state.subjects.some(s=>s.id===a.subjectId&&s.parentId===activeSubject.id)&&(a.code===original?.code||a.code===nextActivity.code)));
+    if(protectedActivities.some(a=>!preservesRecoveryEvidence(a,nextActivity))){alert('Hi ha recuperacions en aquesta activitat o en un grup fill. No es poden treure criteris ni canviar-ne el format, l’escala o la correspondència perquè es perdria el significat de les evidències originals. Pots editar la resta de dades o crear una activitat nova.');return;}
     let updatedActs: CurricularActivity[] = [];
     if (editingId) {
       updatedActs = existingActivities.map(a => a.id === editingId ? nextActivity : a);
@@ -395,6 +398,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
     const clonedAct: CurricularActivity = {
       ...parentAct,
+      recoveries: undefined,
       id: 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
       subjectId: selectedSubId, // Adopt child group ID
       grades: {} // Starts empty for local students
