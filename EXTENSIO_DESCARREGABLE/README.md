@@ -39,3 +39,8 @@ API oficial del panell: https://developer.chrome.com/docs/extensions/reference/a
 La llista s’ordena alfabèticament pel nom mostrat, respectant els accents i el nom preferit. En actualitzar des de la versió 1.0.0 cal reemplaçar la carpeta, prémer «Torna a carregar» a Chrome i actualitzar qualsevol pestanya antiga d’Àula.
 
 La consulta mostra les dades ja carregades al navegador mentre es comprova el fitxer en segon pla, amb un avís durant la sincronització. Les modificacions mantenen la cua de desat i la comprovació del fitxer. «Obrir Àula» activa la web immediatament, sense esperar aquesta cua.
+
+## Finestra flotant (1.2.0)
+Al menú de la icona o al panell lateral, prem **Finestra flotant**. Obre Àula en una finestra independent, movible i redimensionable; si ja existeix, la porta al davant. Comparteix les dades i la coordinació de desat del mateix perfil. No requereix tenir Àula oberta i no afegeix permisos. No és una finestra sempre per damunt de les altres aplicacions. A la web també hi ha el botó al menú.
+
+Per actualitzar una instal·lació desempaquetada, descarrega el ZIP nou, substitueix la carpeta i prem **Torna a carregar** a `chrome://extensions` (o `edge://extensions`).

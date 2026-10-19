@@ -18,3 +18,5 @@ for(const [id,quick] of [['attendance',false],['quick',true]])$(id).onclick=()=>
 };
 $('open').onclick=async()=>{try{const res=await chrome.runtime.sendMessage({channel:'aula-ui',open:true});if(!res.ok)throw Error(res.error);window.close();}catch(e){$('status').textContent=e.message;}};
 $('retry').onclick=load;load();
+
+$('floating').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',floating:true}).then(r=>{if(!r.ok)throw Error(r.error);window.close();}).catch(e=>$('status').textContent=e.message);

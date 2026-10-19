@@ -57,8 +57,20 @@ function updateBadge(context){
   chrome.action.setBadgeText({text:context.current.some(s=>s.needsReview||s.summary?.pending>0)?'!':context.current.length?'CL':''});
   chrome.action.setBadgeBackgroundColor({color:'#172554'});
 }
+// A separate window is a normal same-origin app client, never an auxiliary tab.
+let floatingLookup=null;
+async function openFloating(){
+ if(floatingLookup)return floatingLookup;
+ floatingLookup=(async()=>{
+  const tabs=(await chrome.tabs.query({url:APP+'*'})).filter(t=>isApp(t.url)&&new URL(t.url).searchParams.get('floating')==='1');
+  for(const tab of tabs){try{const win=await chrome.windows.get(tab.windowId);if(win.type==='popup'){if(auxiliary===tab.id)auxiliary=null;await chrome.tabs.update(tab.id,{active:true});await chrome.windows.update(win.id,{focused:true,...(win.state==='minimized'?{state:'normal'}:{})});return {ok:true};}}catch{}}
+  await chrome.windows.create({url:APP+'?floating=1',type:'popup',width:1000,height:780,focused:true});return {ok:true};
+ })();
+ try{return await floatingLookup;}finally{floatingLookup=null;}
+}
 async function route(message){
   clearTimeout(closeTimer);
+  if(message.floating)return openFloating();
   const tab=await appTab(!message.passive);
   if(!tab)return {ok:true,idle:true};
   if(message.open){
@@ -84,7 +96,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   }
   if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL(''))||message?.channel!=='aula-ui')return;
   // Navigation and read-only snapshots must never wait behind file I/O.
-  const independent=message.open||readAction(message.request?.action);
+  const independent=message.floating||message.open||readAction(message.request?.action);
   const operation=independent?route(message):tail.then(()=>route(message));if(!independent)tail=operation.catch(()=>{});
   operation.then(reply).catch(e=>reply({ok:false,error:e.message||'Connexió interrompuda. Comprova el resultat a Àula abans de repetir el canvi.'}));return true;
 });

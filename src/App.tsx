@@ -1,3 +1,4 @@
+import {floatingView} from './utils/floatingWindow';
 import {BridgeHost,installExtensionBridge,publishExtensionChange} from './extension/extensionBridge';
 import {ImportIssue,ImportValidationError,parseImportJson,readImportFile,assertValidImport,inspectImport} from './utils/importValidation';
 import {OrphanItem,removeOrphanData} from './utils/orphanData';
@@ -49,7 +50,7 @@ export default function App() {
   const [configSubjectId, setConfigSubjectId] = useState<string | null>(null);
   const [studentId,setStudentId]=useState<string|null>(null);
   const openStudent=(id:string)=>{setStudentId(id);setActiveView('alumnat');};
-  const [activeView, setActiveView] = useState<string>('horari');
+  const [activeView, setActiveView] = useState<string>(()=>floatingView(window.location.search));
   
   // Sibling states for showing detailed individual Session Journal Logs
   const [selectedSessionSlotId, setSelectedSessionSlotId] = useState<string | null>(null);
@@ -386,7 +387,7 @@ export default function App() {
   useEffect(()=>{const timer=window.setInterval(publishExtensionChange,60000);return()=>clearInterval(timer);},[]);
 
   return (
-    <div id="app-viewport" className="min-h-screen bg-[#F8FAFC] text-slate-800 flex pl-56 font-sans antialiased selection:bg-blue-600/10 selection:text-blue-600">
+    <div id="app-viewport" data-floating={new URLSearchParams(window.location.search).get('floating')==='1'} className="min-h-screen bg-[#F8FAFC] text-slate-800 flex pl-56 font-sans antialiased selection:bg-blue-600/10 selection:text-blue-600">
       
       {/* Fallback hidden file input */}
       <input 

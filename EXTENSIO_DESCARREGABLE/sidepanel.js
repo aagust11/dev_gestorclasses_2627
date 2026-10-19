@@ -65,3 +65,5 @@ $('open').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',open:true,pa
 chrome.runtime.onMessage.addListener(message=>{if(message.channel==='aula-refresh'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{if(!$('session').value&&!busy)void load();else void loadSession(true);},500);}});
 // Passive refresh never creates a tab. Only an explicit user operation can do that.
 setInterval(()=>loadSession(true),15000);load();
+
+$('floating').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',floating:true}).then(r=>{if(!r.ok)throw Error(r.error);}).catch(e=>$('status').textContent=e.message);

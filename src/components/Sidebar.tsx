@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React,{useState} from 'react';
+import {openFloatingWindow} from '../utils/floatingWindow';
 import { 
   Users,
   Calendar, 
@@ -26,6 +27,7 @@ export default function Sidebar({
   onViewChange,
   dataBadge
 }: SidebarProps) {
+  const [windowError,setWindowError]=useState('');
   const menuItems: { id: string; label: string; icon: any; disabled: boolean; badge?: string }[] = [
     { id: 'horari', label: 'Horari', icon: Calendar, disabled: false },
     { id: 'classes', label: 'Assignatures', icon: BookOpen, disabled: false },
@@ -84,6 +86,8 @@ export default function Sidebar({
             </button>
           );
         })}
+        <button id="open-floating-window" className="block px-3 py-2.5 text-sm hover:text-white" onClick={()=>setWindowError(openFloatingWindow(activeView)?'':'Permet les finestres emergents d’Àula al navegador i torna-ho a provar.')}>Finestra flotant ↗</button>
+        {windowError&&<p role="alert" className="text-xs text-amber-200 px-3">{windowError}</p>}
         <a href={`${(import.meta as any).env?.BASE_URL||'./'}EXTENSIO_DESCARREGABLE/`} target="_blank" rel="noopener noreferrer" className="block px-3 py-2.5 text-sm hover:text-white">Extensió del navegador ↗</a>
       </nav>
     </aside>

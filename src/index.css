@@ -102,3 +102,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .support-dialog { margin:auto; width:min(36rem,calc(100vw - 2rem)); max-height:80vh; overflow:auto; padding:1.25rem; border:1px solid #cbd5e1; border-radius:1rem; color:#0f172a; background:white; box-shadow:0 20px 60px #0004; }
 .support-dialog::backdrop { background:rgb(15 23 42 / .5); }
+
+
+/* The independent window keeps the full app and shared storage, with compact navigation. */
+#app-viewport[data-floating="true"] { padding-left:0; padding-top:4rem; }
+#app-viewport[data-floating="true"] #sidebar-container { width:100%; height:auto; padding:.4rem; }
+#app-viewport[data-floating="true"] #sidebar-header { display:none; }
+#app-viewport[data-floating="true"] #sidebar-nav { display:flex; overflow-x:auto; gap:.25rem; }
+#app-viewport[data-floating="true"] #sidebar-nav button { width:auto; white-space:nowrap; padding:.5rem; }
+#app-viewport[data-floating="true"] #sidebar-nav svg { display:none; }
+#app-viewport[data-floating="true"] #workspace-frame { height:calc(100dvh - 4rem); }
+#app-viewport[data-floating="true"] #main-content-scroll { padding:.75rem; }
+#app-viewport[data-floating="true"] #workspace-header { padding:.5rem .75rem; }
+#app-viewport[data-floating="true"] .session-continuity { grid-template-columns:1fr; }
