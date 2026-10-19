@@ -1,4 +1,3 @@
-import {latestPeriodEvent} from './recoveryModel';
 import {AppState} from '../types';
 import {recordKey} from './termRecords';
 
@@ -63,7 +62,7 @@ export function combineSharedState(base:AppState,next:AppState,latest:AppState,r
   if(!equal(base.periodSnapshots,latest.periodSnapshots)&&!equal(base,next))throw new EditConflict(['Una altra pestanya ha tancat o reobert una avaluació. Revisa els canvis abans de desar.']);
   for(const activity of latest.activities||[]){
     const before=base.activities?.find(a=>a.id===activity.id),draft=next.activities?.find(a=>a.id===activity.id);
-    if(before&&draft&&!equal(before.recoveries,activity.recoveries)&&!equal(before.grades,draft.grades))throw new EditConflict(['S’ha registrat una recuperació mentre editaves les notes originals.']);
+    if(before&&draft&&((!equal(before.recoveries,activity.recoveries)&&!equal(before.grades,draft.grades))||(!equal(before.recoveries,draft.recoveries)&&!equal(before.grades,activity.grades))))throw new EditConflict(['S’ha registrat una recuperació mentre editaves les notes originals.']);
   }
   // These are projections, not independently editable records.
   const withoutProjection=(s:AppState)=>{const copy={...s};delete copy.enrolments;return copy;};

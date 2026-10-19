@@ -84,3 +84,28 @@ test('disabling application records evidence without changing grades and export 
  assert.ok(buildActivitiesWorkbook(s.subjects[0],s.activities!,s.criteria,s.subjects[0].students).SheetNames.includes('Recuperacions'));
  const deleted=deleteStudent(s,'u','Alumne U');assert.equal(activity(deleted).recoveries?.u,undefined);
 });
+
+test('recovery and original grading cannot cross silently in either write order',()=>{
+ const base=fixture(),recovered=registerRecovery(base,'a','u',input()),changed=structuredClone(base);
+ changed.activities![0].grades!.u={criteriaGrades:{ca:{rawScore:2}}};
+ assert.throws(()=>combineSharedState(base,recovered,changed));
+ assert.throws(()=>combineSharedState(base,changed,recovered));
+});
+test('pending marker can be removed before an attempt without freezing ordinary grading',()=>{
+ let s=fixture();s=setRecoveryPending(s,activity(s),'u',true);s=setRecoveryPending(s,activity(s),'u',false);
+ assert.equal(activity(s).recoveries?.u,undefined);
+});
+test('competencial evidence is retained while policy adjusts only computable results',()=>{
+ let s=fixture();activity(s).criteriaGradingType={ca:'competencial'};s=closeEvaluation(s,s.subjects[0],'pre','Close');
+ s=registerRecovery(s,'a','u',{...input(),evidence:{'criterion:ca':{competencialScore:'AE'}}});
+ assert.equal(activity(s).recoveries!.u.attempts[0].results[0].evidence.competencialScore,'AE');assert.equal(grade(s).qual,'AN');
+ assert.ok(inspectImport(s).valid);
+});
+
+test('test and numeric aspect recoveries keep their own raw evidence and weighting',()=>{
+ let s=fixture(true);activity(s).numericAspects=[{id:'test',label:'Test',weight:2,format:'test',maxScore:10,test:{questions:10,correct:1,blank:0,incorrect:-0.25}},{id:'exercise',label:'Exercici',weight:1,format:'numeric',maxScore:20}];
+ s=closeEvaluation(s,s.subjects[0],'pre','Close');
+ s=registerRecovery(s,'a','u',{...input(),evidence:{'aspect:test':{testAnswers:{correct:10,blank:0,incorrect:0}},'aspect:exercise':{rawScore:20,maxScore:20}}});
+ const results=activity(s).recoveries!.u.attempts[0].results;
+ assert.equal(results[0].evidence.testAnswers!.correct,10);assert.equal(results[1].evidence.rawScore,20);assert.equal(grade(s).qual,'AN');assert.ok(inspectImport(s).valid,JSON.stringify(inspectImport(s).issues));
+});
