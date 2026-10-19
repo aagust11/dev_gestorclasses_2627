@@ -1,3 +1,4 @@
+import {recoveryResult,hasRecovery,effectiveActivityStatus} from './recoveryModel';
 import {testResult,DEFAULT_TEST} from './testScoring';
 import { sourceCriterionId } from './activityCriteria';
 /**
@@ -167,7 +168,7 @@ export function weightedStatistic(entries: { score: number; weight: number }[], 
     const weights = new Map<number,number>();
     xs.forEach(x => weights.set(round(x.score), (weights.get(round(x.score)) || 0)+x.weight));
     let best = xs[0].score, max = -1;
-    weights.forEach((w,score) => { if (w > max) { best=score; max=w; } });
+    weights.forEach((w,score) => { if (w > max) { best=xs.find(x=>round(x.score)===score)!.score; max=w; } });
     return best;
   }
   let cumulative = 0;
@@ -189,6 +190,7 @@ export function filterActivitiesForPeriod(activities: CurricularActivity[], subj
 
 // Raw numeric scores take precedence over their cached qualitative equivalent.
 export function getCriterionScore(act: CurricularActivity, studentId: string, criterionId: string, subject: Subject): number | null {
+  const recovered=recoveryResult(act,studentId,"criterion:"+criterionId);if(recovered)return recovered.computable;
   const settings = getCompSettings(subject), g = act.grades?.[studentId], cg = g?.criteriaGrades?.[criterionId];
   if (act.assessmentType==='completion'||g?.status === 'exempt') return null;
   if (g?.status === 'not_submitted') return 0;
@@ -210,8 +212,9 @@ export function getCriterionScore(act: CurricularActivity, studentId: string, cr
 }
 
 export function getActivityScore(act: CurricularActivity, studentId: string, subject: Subject): number | null {
-  if (act.assessmentType==='completion'||act.grades?.[studentId]?.status === 'exempt') return null;
-  if (act.grades?.[studentId]?.status === 'not_submitted') return 0;
+  const recovered=recoveryResult(act,studentId,'global');if(recovered)return recovered.computable;
+  if (act.assessmentType==='completion'||effectiveActivityStatus(act,studentId) === 'exempt') return null;
+  if (effectiveActivityStatus(act,studentId) === 'not_submitted') return 0;
   if(act.numericAspects?.length)return weightedStatistic(act.numericAspects.map(aspect=>({score:getAspectScore(act,studentId,aspect.id,subject),weight:aspect.weight})));
   if(act.numericGradingType==='test'&&!act.criteriaIds?.length)return testResult(act.grades?.[studentId]?.testAnswers,act.numericTest||DEFAULT_TEST)?.normalized??null;
   if (act.criteriaIds?.length) {
@@ -224,6 +227,7 @@ export function getActivityScore(act: CurricularActivity, studentId: string, sub
 }
 
 export function getAspectScore(act:CurricularActivity,studentId:string,id:string,subject:Subject):number|null {
+ const recovered=recoveryResult(act,studentId,'aspect:'+id);if(recovered)return recovered.computable;
  const aspect=act.numericAspects?.find(a=>a.id===id),g=act.grades?.[studentId],grade=g?.aspectGrades?.[id];
  if(!aspect||act.assessmentType==='completion'||g?.status==='exempt')return null;
  if(g?.status==='not_submitted')return 0;
@@ -232,7 +236,7 @@ export function getAspectScore(act:CurricularActivity,studentId:string,id:string
  return valid(grade?.rawScore)&&aspect.maxScore>0?clamp(grade.rawScore/aspect.maxScore*4):null;
 }
 export function activityIsEvaluated(act:CurricularActivity,studentId:string,subject:Subject):boolean {
- const grade=act.grades?.[studentId];
+ const grade={...act.grades?.[studentId],status:effectiveActivityStatus(act,studentId)};
  if(grade?.status==='exempt')return false;
  if(grade?.status==='not_submitted')return true;
  if(act.assessmentType==='completion')return grade?.completion==='done'||grade?.completion==='not_done';
@@ -241,13 +245,13 @@ export function activityIsEvaluated(act:CurricularActivity,studentId:string,subj
 }
 export function activitySummary(activities:CurricularActivity[],studentId:string,subject:Subject){
  let evaluated=0,np=0,done=0,notDone=0,exempt=0;
- for(const a of activities){const g=a.grades?.[studentId];if(g?.status==='exempt'){exempt++;continue;}if(!activityIsEvaluated(a,studentId,subject))continue;evaluated++;if(g?.status==='not_submitted')np++;else if(a.assessmentType==='completion'){if(g?.completion==='done')done++;else if(g?.completion==='not_done')notDone++;}}
+ for(const a of activities){const g={...a.grades?.[studentId],status:effectiveActivityStatus(a,studentId)};if(g?.status==='exempt'){exempt++;continue;}if(!activityIsEvaluated(a,studentId,subject))continue;evaluated++;if(g?.status==='not_submitted')np++;else if(a.assessmentType==='completion'){if(g?.completion==='done')done++;else if(g?.completion==='not_done')notDone++;}}
  return {evaluated,np,done,notDone,exempt};
 }
 export function activityGradeLabel(activity:CurricularActivity,studentId:string,subject:Subject){
- const g=activity.grades?.[studentId];if(g?.status==='exempt')return 'Exempt';if(g?.status==='not_submitted')return 'NP';
+ const g={...activity.grades?.[studentId],status:effectiveActivityStatus(activity,studentId)};if(g?.status==='exempt')return 'Exempt';if(g?.status==='not_submitted')return 'NP';
  if(activity.assessmentType==='completion')return g?.completion==='done'?'Fet':g?.completion==='not_done'?'No fet':'Pendent';
- const score=getActivityScore(activity,studentId,subject);return score===null?'Pendent':(score*(subject.evaluationType==='numeric'?2.5:1)).toFixed(2)+' · '+scoreToCompetencial(score,getCompSettings(subject).thresholds);
+ const score=getActivityScore(activity,studentId,subject);return score===null?'Pendent':(score*(subject.evaluationType==='numeric'?2.5:1)).toFixed(2)+' · '+scoreToCompetencial(score,getCompSettings(subject).thresholds)+(hasRecovery(activity,studentId)?' · R':'');
 }
 
 function computeCompetencial(subject: Subject, activities: CurricularActivity[], competencies: Competency[], criteria: EvalCriterion[], existing: Record<string,TermStudentGrades> | undefined, mode: CalculationMode) {
@@ -362,9 +366,9 @@ export function buildActivitiesWorkbook(subject:Subject,activities:CurricularAct
   const rows=students.map(st=>{
     const summary=activitySummary(activities,st.id,subject),row:(string|number|null)[]=[st.id,st.name,summary.np,summary.evaluated,summary.done,summary.notDone];
     activities.forEach(a=>{
-      const g=a.grades?.[st.id],status=g?.status,qual=status==='not_submitted'?'NP':status==='exempt'?'Exempt':'';
+      const g=a.grades?.[st.id],status=effectiveActivityStatus(a,st.id),qual=status==='not_submitted'?'NP':status==='exempt'?'Exempt':'';
       slots(a).forEach(slot=>{
-        const aspect=a.numericAspects?.find(x=>x.id===slot.id),cg=slot.aspect?g?.aspectGrades?.[slot.id]:g?.criteriaGrades?.[slot.id];
+        const aspect=a.numericAspects?.find(x=>x.id===slot.id),cg=recoveryResult(a,st.id,(slot.aspect?"aspect:":"criterion:")+slot.id)?.evidence||(slot.aspect?g?.aspectGrades?.[slot.id]:g?.criteriaGrades?.[slot.id]);
         const score=slot.aspect?getAspectScore(a,st.id,slot.id,subject):getCriterionScore(a,st.id,slot.id,subject);
         const answers=status?undefined:cg?.testAnswers,result=testResult(answers,(slot.aspect?aspect?.test:a.criteriaTests?.[slot.id])||DEFAULT_TEST);
         row.push(status?(status==='not_submitted'?0:null):result?.score??cg?.rawScore??cg?.competencialScore??null,result?.max??(cg?.rawScore!=null?(aspect?.maxScore??a.criteriaMaxScores?.[slot.id]??cg.maxScore??10):null),exportNumber(score),qual||(score===null?'Pendent':scoreToCompetencial(score,getCompSettings(subject).thresholds)),answers?.correct??null,answers?.blank??null,answers?.incorrect??null);
@@ -372,7 +376,12 @@ export function buildActivitiesWorkbook(subject:Subject,activities:CurricularAct
       const globalScore=getActivityScore(a,st.id,subject);
       row.push(globalScore===null?null:round(globalScore*(subject.evaluationType==='numeric'?2.5:1)),activityGradeLabel(a,st.id,subject),g?.comment||'',status?null:g?.testAnswers?.correct??null,status?null:g?.testAnswers?.blank??null,status?null:g?.testAnswers?.incorrect??null);
     });return row;
-  });return workbook(`${subject.name} · Notes de les activitats`,headers,rows,'Activitats');
+  });
+  const wb=workbook(`${subject.name} · Notes de les activitats`,headers,rows,'Activitats');
+  const history:any[][]=[['Alumne','Activitat','Inicial','Data inicial','Data recuperació','Aspecte','Evidència original','Real /4','Qualificació real','Computable /4','Qualificació computable','Política','Aplicat','Anul·lació','Observacions','Excepció']];
+  for(const a of activities)for(const st of students){const r=a.recoveries?.[st.id];if(!r)continue;for(const attempt of r.attempts)for(const result of attempt.results)history.push([st.name,a.code,r.originalQual,r.originalDate||'No registrada',attempt.date,result.slot.label,JSON.stringify(result.evidence),result.demonstrated,result.demonstratedQual,result.computable,result.computableQual,attempt.policy,attempt.applied?'Sí':'No',r.annulments.find(x=>x.attemptId===attempt.id)?.reason||'',attempt.observations,attempt.exceptionReason]);}
+  if(history.length>1)XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(history),'Recuperacions');
+  return wb;
 }
 export function exportActivitiesToExcel(subject: Subject, activities: CurricularActivity[], criteria: EvalCriterion[], students: Subject['students']) {
   XLSX.writeFile(buildActivitiesWorkbook(subject,activities,criteria,students),`Activitats_${safeName(subject.name)}.xlsx`);

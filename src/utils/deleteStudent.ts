@@ -12,7 +12,9 @@ export function deleteStudent(state:AppState,id:string,typedName:string):AppStat
   next.identityArchive=next.identityArchive?.filter(entry=>entry.legacyId!==id);
   next.subjects.forEach(s=>{s.students=s.students.filter(st=>st.id!==id);});
   next.sessionLogs.forEach(l=>{delete l.attendance[id];});
-  next.activities?.forEach(a=>{if(a.grades)delete a.grades[id];});
+  next.activities?.forEach(a=>{if(a.grades)delete a.grades[id];if(a.recoveries)delete a.recoveries[id];});
+  next.recoveryTasks=next.recoveryTasks?.map(t=>({...t,studentIds:t.studentIds.filter(x=>x!==id)})).filter(t=>t.studentIds.length>0);
+  next.periodSnapshots?.forEach(s=>{s.subject.students=s.subject.students.filter(x=>x.id!==id);delete s.comments[id];for(const m of ['mean','median','mode'] as const){delete s.grades[m][id];delete s.automatic[m][id];}s.activities.forEach(a=>{if(a.grades)delete a.grades[id];if(a.recoveries)delete a.recoveries[id];});});
   next.termGradesRecords?.forEach(r=>{delete r.students[id];});
   Object.values(next.periodComments||{}).forEach(periods=>Object.values(periods).forEach(comments=>{delete comments[id];}));
   next.plans.forEach(p=>{p.seats=Object.fromEntries(Object.entries(p.seats).filter(([,studentId])=>studentId!==id));});
@@ -27,3 +29,4 @@ export function prepareStudentDeletion(latest:AppState,reviewed:AppState,id:stri
   // Invalidate pending drafts in other tabs so they cannot recreate deleted records.
   return {...next,workspaceGeneration:crypto.randomUUID()} as AppState;
 }
+

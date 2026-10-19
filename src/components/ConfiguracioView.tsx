@@ -287,6 +287,7 @@ export default function ConfiguracioView({
             evaluationType: editingSubject.evaluationType || 'competencial',
             numericItems: editingSubject.numericItems,
             compSettings: editingSubject.compSettings,
+            recoverySettings: editingSubject.recoverySettings,
             name: editName,
             color: editColor,
             isGeneral: editIsGeneral,

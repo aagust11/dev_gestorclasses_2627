@@ -1,3 +1,4 @@
+import RecoveryTasksPage from './RecoveryTasksPage';
 import NumericAspectsEditor from './NumericAspectsEditor';
 import {TestScoringFields} from './TestScoringFields';
 import {DEFAULT_TEST} from '../utils/testScoring';
@@ -60,6 +61,7 @@ interface ActivitatsViewProps {
 }
 
 export default function ActivitatsView({ state, onChangeState }: ActivitatsViewProps) {
+  const [showRecoveryTasks,setShowRecoveryTasks]=useState(false);
   const [showOverview,setShowOverview]=useState(true);
   // 1. Get subjects with valid students
   const validSubjects = useMemo(() => {
@@ -262,6 +264,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
       return;
     }
 
+    if(editingId&&Object.keys(existingActivities.find(a=>a.id===editingId)?.recoveries||{}).length){alert('Aquesta activitat té un historial de recuperacions. Es conserva la configuració original per mantenir la coherència dels criteris i pesos. Pots canviar la política a Qualificar.');return;}
     const nextActivity: CurricularActivity = {
       ...existingActivities.find(a=>a.id===editingId),
       id: editingId || 'act_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
@@ -527,6 +530,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
   const resolveActivityStatus=(act:CurricularActivity)=>resolveSharedActivityStatus(state,act);
   if(showOverview||!activeSubject)return <ActivitiesOverview state={state} onOpen={id=>{setSelectedSubId(id);setShowOverview(false);}}/>;
 
+  if(showRecoveryTasks&&activeSubject)return <RecoveryTasksPage state={state} subject={activeSubject} onChange={onChangeState} onBack={()=>setShowRecoveryTasks(false)}/>;
   if (isEditing && activeSubject) return <DetailPage title={editingId ? 'Editar activitat' : 'Nova activitat'} subtitle={activeSubject.name} onBack={resetForm}><div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 animate-slideDown">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="font-bold text-slate-900 text-sm flex items-center gap-1.5">
@@ -941,7 +945,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
               <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
                 <h3 className="font-bold text-slate-900 flex items-center gap-2">
                   <CheckSquare className="w-5 h-5 text-blue-500 animate-spin-slow" />
-                  <span>Dossier d'Activitats ({activitiesForSubject.direct.length})</span>
+                  <span>Dossier d'Activitats ({activitiesForSubject.direct.length})</span><button className="ds-button" onClick={()=>setShowRecoveryTasks(true)}>Proves de recuperació</button>
                 </h3>
                 {!isEditing && (
                   <button

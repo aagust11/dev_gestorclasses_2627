@@ -1,3 +1,4 @@
+import {closedPeriod,periodCommentsFor} from './recoveryModel';
 import {activitySummary,activityGradeLabel,filterActivitiesForPeriod} from './gradeCalculations';
 import {studentAttendance,attendanceLabels} from './attendance';
 import {studentSubjects} from './studentEnrolment';
@@ -17,15 +18,17 @@ export function buildStudentReport(state:AppState,studentId:string) {
     // A report-only roster includes former pupils without re-enrolling them in the app.
     const subject=original.students.some(s=>s.id===studentId)?original:{...original,students:[...original.students,student]};
     return periods.map(period=>{
+    const snapshot=closedPeriod(state,subject.id,period.id);
+    const effectiveSubject=snapshot?.subject||subject;
     const actual=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m)])) as Record<CalculationMode,TermStudentGrades>;
     const automatic=Object.fromEntries(reportMethods.map(m=>[m,studentPeriodGrade(state,subject,studentId,period.id,m,true)])) as Record<CalculationMode,TermStudentGrades>;
-    const competencies=state.competencies.filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>a.key.localeCompare(b.key,'ca',{numeric:true}));
-    const activities=filterActivitiesForPeriod(state.activities||[],subject.id,period.id,state.config.terms);
-    return {activitySummary:activitySummary(activities,studentId,subject),activities:activities.map(a=>({code:a.code,title:a.title,date:a.endDate,result:activityGradeLabel(a,studentId,subject),comment:a.grades?.[studentId]?.comment||''})),subject,period,actual,automatic,competencies,comment:state.periodComments?.[subject.id]?.[period.id]?.[studentId]||''};
+    const competencies=(snapshot?.competencies||state.competencies).filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>a.key.localeCompare(b.key,'ca',{numeric:true}));
+    const activities=closedPeriod(state,subject.id,period.id)?.activities||filterActivitiesForPeriod(state.activities||[],subject.id,period.id,state.config.terms);
+    return {activitySummary:activitySummary(activities,studentId,effectiveSubject),activities:activities.map(a=>({id:a.id,source:a,code:a.code,title:a.title,date:a.endDate,result:activityGradeLabel(a,studentId,effectiveSubject),comment:a.grades?.[studentId]?.comment||''})),subject:effectiveSubject,period,actual,automatic,competencies,comment:periodCommentsFor(state,subject.id,period.id)[studentId]||''};
   });});
   const history=studentSessionHistory(state,studentId);
   const attendance=studentAttendance(state,studentId);
-  return {teacher:state.config.teacherProfile,attendance,name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
+  return {studentId,teacher:state.config.teacherProfile,attendance,name:student.name,subjects:subjects.map(s=>s.name),notes:state.studentProfiles?.[studentId]?.notes||'',supportMeasures:state.studentProfiles?.[studentId]?.supportMeasures?.trim()||'',additionalComments:state.studentProfiles?.[studentId]?.additionalComments?.trim()||'',evaluations,history,
     totals:{absent:attendance.absent,late:attendance.late,pos:history.reduce((n,l)=>n+sessionComments(l.studentLog,'pos').length,0),incident:history.reduce((n,l)=>n+sessionComments(l.studentLog,'incident').length,0)}};
 }
 export type StudentReport=ReturnType<typeof buildStudentReport>;
@@ -37,6 +40,7 @@ export function reportSections(report:StudentReport) {
     sections.push({title:`Notes · ${name}`,headers:['Període',...reportMethods.map(m=>reportMethodNames[m]),'NP / avaluades','Fet / No fet','Comentari'],rows:evaluations.map(e=>[`${e.period.name} (/${e.subject.evaluationType==='numeric'?10:4})`,...reportMethods.map(m=>comparedGradeText(e.actual[m]?.finalGrade,e.automatic[m]?.finalGrade)),`${e.activitySummary.np} / ${e.activitySummary.evaluated}`,`${e.activitySummary.done} / ${e.activitySummary.notDone}`,e.comment])});
     const annual=evaluations.find(e=>e.period.id==='annual');
     if(annual?.activities.length)sections.push({title:`Activitats · ${name}`,headers:['Activitat','Lliurament','Resultat','Comentari'],rows:annual.activities.map(a=>[`${a.code} · ${a.title}`,a.date,a.result,a.comment])});
+    if(annual){const rows=annual.activities.flatMap(a=>{const r=a.source.recoveries?.[report.studentId];return (r?.attempts||[]).flatMap(at=>at.results.map(x=>[a.code,r!.originalQual,r!.originalDate||'No registrada',at.date,x.slot.label,`${x.demonstrated.toFixed(4)} ${x.demonstratedQual}`,`${x.computable.toFixed(4)} ${x.computableQual}`,r!.annulments.some(v=>v.attemptId===at.id)?'Anul·lat':at.applied?'Aplicat':'No aplicat',at.observations]));});if(rows.length)sections.push({title:`Recuperacions · ${name}`,headers:['Activitat','Inicial','Data inicial','Data','Aspecte','Real /4','Computable /4','Estat','Observacions'],rows});}
     for(const e of evaluations)if(e.competencies.length)sections.push({title:`Competències · ${name} · ${e.period.name} (0–4)`,headers:['Competència',...reportMethods.map(m=>reportMethodNames[m])],rows:e.competencies.map(c=>[`${c.key} · ${c.description}`,...reportMethods.map(m=>comparedGradeText(e.actual[m]?.competencies[c.id],e.automatic[m]?.competencies[c.id]))])});
   }
   const statuses=attendanceLabels;

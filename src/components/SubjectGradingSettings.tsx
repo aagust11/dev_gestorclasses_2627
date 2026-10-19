@@ -1,3 +1,5 @@
+import RecoverySettingsFields from './RecoverySettingsFields';
+import {recoverySettings} from '../utils/recoveryModel';
 import React from 'react';
 import NumericAspectsEditor from './NumericAspectsEditor';
 import { Subject } from '../types';
@@ -20,6 +22,7 @@ export function validateSubjectGrading(subject: Subject): string | null {
 export default function SubjectGradingSettings({subject,onChange}:{subject:Subject;onChange:(s:Subject)=>void}) {
   const settings=getCompSettings(subject), items=subject.numericItems || [];
   return <section className="ds-panel space-y-4 md:col-span-2">
+    <RecoverySettingsFields value={recoverySettings(subject)} onChange={recoverySettings=>onChange({...subject,recoverySettings})}/>
     <h3 className="font-bold text-lg">Avaluació i càlcul de notes</h3>
     <label className="ds-field">Sistema de l’assignatura<select value={subject.evaluationType || 'competencial'} onChange={e=>onChange({...subject,evaluationType:e.target.value as any})}><option value="competencial">Competencial · escala 0–4</option><option value="numeric">Numèric · escala 0–10</option></select></label>
     <div className="grid md:grid-cols-2 gap-4">

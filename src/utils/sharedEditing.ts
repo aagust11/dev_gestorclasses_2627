@@ -1,3 +1,4 @@
+import {latestPeriodEvent} from './recoveryModel';
 import {AppState} from '../types';
 import {recordKey} from './termRecords';
 
@@ -56,7 +57,16 @@ export async function withSharedWrite<T>(locks:Pick<LockManager,'request'>|undef
 export function combineSharedState(base:AppState,next:AppState,latest:AppState,replace=false,preferLocal=false):AppState {
   if(!replace&&(base as any).workspaceGeneration!==(latest as any).workspaceGeneration)throw new EditConflict(['S’han substituït les dades compartides (importació o restauració). Descarrega els pendents i carrega la versió nova.']);
   if(replace){if(!equal(base,latest))throw new EditConflict(['Substitució completa: les dades han canviat en una altra pestanya.']);return next;}
+  // Closing or reopening is a transaction over the evaluation evidence. Never
+  // merge a closure made from stale data, or a draft made before another closure.
+  if(!equal(base.periodSnapshots,next.periodSnapshots)&&!equal(base,latest))throw new EditConflict(['El tancament o la rectificació necessita tornar a llegir les dades actuals.']);
+  if(!equal(base.periodSnapshots,latest.periodSnapshots)&&!equal(base,next))throw new EditConflict(['Una altra pestanya ha tancat o reobert una avaluació. Revisa els canvis abans de desar.']);
+  for(const activity of latest.activities||[]){
+    const before=base.activities?.find(a=>a.id===activity.id),draft=next.activities?.find(a=>a.id===activity.id);
+    if(before&&draft&&!equal(before.recoveries,activity.recoveries)&&!equal(before.grades,draft.grades))throw new EditConflict(['S’ha registrat una recuperació mentre editaves les notes originals.']);
+  }
   // These are projections, not independently editable records.
   const withoutProjection=(s:AppState)=>{const copy={...s};delete copy.enrolments;return copy;};
   return mergeEdits(withoutProjection(base),withoutProjection(next),withoutProjection(latest),preferLocal);
 }
+

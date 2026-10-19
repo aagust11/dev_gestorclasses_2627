@@ -97,6 +97,7 @@ export interface CompetencyEvaluationSettings {
 export type SubjectEvaluationType = 'competencial' | 'numeric';
 
 export interface Subject {
+  recoverySettings?: RecoverySettings;
   id: string;
   name: string;
   color: string; // HEX color or tailwind class name
@@ -175,6 +176,7 @@ export interface StudentCriterionGrade {
 }
 
 export interface StudentActivityGrade {
+  evaluatedAt?: string;
   completion?: 'done' | 'not_done';
   aspectGrades?: Record<string,StudentCriterionGrade>;
   testAnswers?: TestAnswers;
@@ -189,6 +191,8 @@ export interface StudentActivityGrade {
 }
 
 export interface CurricularActivity {
+  recoverySettings?: RecoverySettings;
+  recoveries?: Record<string, ActivityRecovery>;
   gradingComment?: string;
   assessmentType?: 'graded' | 'completion';
   numericAspects?: NumericAspect[];
@@ -250,6 +254,8 @@ export interface TermGradesRecord {
 }
 
 export interface AppState {
+  periodSnapshots?: PeriodSnapshot[];
+  recoveryTasks?: RecoveryTask[];
   identityVersion?: number;
   studentRegistry?: Record<string, Student>;
   enrolments?: Record<string,string[]>;
@@ -288,3 +294,38 @@ export interface AppState {
   termGradesRecords?: TermGradesRecord[];
 }
 
+
+
+export type RecoveryPolicy = 'none' | 'lower_level' | 'cap_as';
+export interface RecoverySettings {
+ enabled:boolean; policy:RecoveryPolicy; applyToNA:boolean; allowExceptions:boolean;
+ afterClosureOnly:boolean; updateOpenPeriods:boolean;
+}
+export interface RecoverySlot { key:string; kind:'criterion'|'aspect'|'global'; id:string; label:string; format:AspectFormat; max:number; test?:TestScoring; }
+export interface RecoveryEvidence {
+ slot:RecoverySlot; evidence:StudentCriterionGrade; demonstrated:number; computable:number;
+ demonstratedQual:'NA'|'AS'|'AN'|'AE'; computableQual:'NA'|'AS'|'AN'|'AE';
+}
+export interface RecoveryAttempt {
+ id:string; recordedAt:string; date:string; policy:RecoveryPolicy; settings:RecoverySettings;
+ thresholds:CompetencyEvaluationSettings['thresholds']; values:CompetencyEvaluationSettings['values'];
+ observations:string; exceptionReason:string; sourceTaskId?:string; applied:boolean;
+ results:RecoveryEvidence[];
+}
+export interface ActivityRecovery {
+ original:StudentActivityGrade; originalQual:string; originalDate:string; originalCapturedAt:string;
+ attempts:RecoveryAttempt[]; pending:boolean;
+ annulments:{id:string;attemptId:string;at:string;reason:string}[];
+}
+export interface RecoveryTask {
+ id:string;subjectId:string;title:string;date:string;studentIds:string[];
+ targets:{activityId:string;slotKeys:string[]}[];
+ archived?:boolean;
+}
+export interface PeriodSnapshot {
+ id:string;subjectId:string;periodId:string;at:string;reason:string;action:'close'|'reopen';
+ grades:Record<CalculationMode,Record<string,TermStudentGrades>>;
+ automatic:Record<CalculationMode,Record<string,TermStudentGrades>>;
+ activities:CurricularActivity[];subject:Subject;competencies:Competency[];criteria:EvalCriterion[];
+ comments:Record<string,string>;groupComment:string;
+}

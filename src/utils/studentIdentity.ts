@@ -16,6 +16,7 @@ export function syncStudentRegistry(state:AppState):AppState {
 }
 const moveKey=(obj:any,from:string,to:string)=>{if(!obj||!Object.hasOwn(obj,from)||from===to)return obj;if(Object.hasOwn(obj,to))throw Error('Hi ha dades de les dues identitats al mateix registre. Cal revisar-les abans de fusionar.');const result={...obj,[to]:obj[from]};delete result[from];return result;};
 export function remapSubjectStudent(state:AppState,subjectId:string,from:string,to:string):AppState {
+  if(from!==to&&((state.activities||[]).some(a=>a.subjectId===subjectId&&(a.recoveries?.[from]||a.recoveries?.[to]))||(state.periodSnapshots||[]).some(p=>p.subjectId===subjectId&&p.subject.students.some(s=>s.id===from||s.id===to))))throw Error('Cal revisar explícitament les identitats amb recuperacions o períodes tancats.');
   return {...state,
     activities:state.activities?.map(a=>a.subjectId===subjectId?{...a,grades:moveKey(a.grades,from,to)}:a),
     sessionLogs:state.sessionLogs.map(l=>l.subjectId===subjectId?{...l,attendance:moveKey(l.attendance,from,to)}:l),
@@ -46,6 +47,8 @@ export function resolveIdentityConflict(state:AppState,id:string,assignments:Rec
   return syncStudentRegistry({...next,studentProfiles:profiles,studentRegistry:registry});
 }
 export function mergeStudents(state:AppState,from:string,to:string):AppState {
+  if((state.activities||[]).some(a=>a.recoveries?.[from]||a.recoveries?.[to])||(state.periodSnapshots||[]).some(p=>p.subject.students.some(s=>s.id===from||s.id===to)))throw Error('Aquestes identitats tenen recuperacions o avaluacions tancades. No es poden fusionar sense revisar l’historial.');
+
   if(from===to||!state.studentRegistry?.[from]||!state.studentRegistry?.[to])throw Error('Selecciona dues identitats diferents.');
   let next=structuredClone(state);
   // Never choose between two populated profiles, grades or comments silently.
@@ -58,3 +61,4 @@ export function mergeStudents(state:AppState,from:string,to:string):AppState {
   delete next.studentRegistry![from];
   return syncStudentRegistry(next);
 }
+

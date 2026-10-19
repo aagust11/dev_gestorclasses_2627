@@ -1,3 +1,4 @@
+import {closedPeriod} from './recoveryModel';
 import {AppState,CalculationMode,Subject,TermStudentGrades} from '../types';
 import {calculateSubjectMode,filterActivitiesForPeriod} from './gradeCalculations';
 import {findTermRecord} from './termRecords';
@@ -13,12 +14,13 @@ function context(state:AppState,subject:Subject):Entry {
   const refs=[state.activities,state.criteria,state.competencies,state.config.terms,state.termGradesRecords];
   const old=cache.get(subject);
   if(old&&refs.every((r,i)=>r===old.refs[i]))return old;
-  const activities=(state.activities||[]).filter(a=>a.subjectId===subject.id).map(a=>({assessmentType:a.assessmentType,numericAspects:a.numericAspects,numericTest:a.numericTest,criteriaTests:a.criteriaTests,criteriaGradingType:a.criteriaGradingType,id:a.id,endDate:a.endDate,weight:a.weight,criteriaIds:a.criteriaIds,criteriaReferences:a.criteriaReferences,criteriaWeights:a.criteriaWeights,criteriaMaxScores:a.criteriaMaxScores,numericItemId:a.numericItemId,numericGradingType:a.numericGradingType,grades:Object.fromEntries(Object.entries(a.grades||{}).map(([id,g])=>[id,{aspectGrades:g.aspectGrades,testAnswers:g.testAnswers,completion:g.completion,score:g.score,competencialScore:g.competencialScore,status:g.status,criteriaGrades:g.criteriaGrades}]))}));
+  const activities=(state.activities||[]).filter(a=>a.subjectId===subject.id).map(a=>({recoveries:a.recoveries,assessmentType:a.assessmentType,numericAspects:a.numericAspects,numericTest:a.numericTest,criteriaTests:a.criteriaTests,criteriaGradingType:a.criteriaGradingType,id:a.id,endDate:a.endDate,weight:a.weight,criteriaIds:a.criteriaIds,criteriaReferences:a.criteriaReferences,criteriaWeights:a.criteriaWeights,criteriaMaxScores:a.criteriaMaxScores,numericItemId:a.numericItemId,numericGradingType:a.numericGradingType,grades:Object.fromEntries(Object.entries(a.grades||{}).map(([id,g])=>[id,{aspectGrades:g.aspectGrades,testAnswers:g.testAnswers,completion:g.completion,score:g.score,competencialScore:g.competencialScore,status:g.status,criteriaGrades:g.criteriaGrades}]))}));
   const fingerprint=JSON.stringify([activities,state.criteria,state.competencies,state.config.terms,(state.termGradesRecords||[]).filter(r=>r.subjectId===subject.id)],(key,value)=>key==='metrics'?undefined:value);
   const entry={refs,fingerprint,results:old?.fingerprint===fingerprint?old.results:new Map<string,Grades>()};
   cache.set(subject,entry);return entry;
 }
 export function periodGrades(state:AppState,subject:Subject,periodId:string,method:CalculationMode,automatic=false):Grades {
+  const closed=closedPeriod(state,subject.id,periodId);if(closed)return (automatic?closed.automatic:closed.grades)[method];
   const entry=context(state,subject),key=JSON.stringify([periodId,method,automatic]);
   const cached=entry.results.get(key);if(cached)return cached;
   const record=findTermRecord(state.termGradesRecords,subject.id,periodId,method);
