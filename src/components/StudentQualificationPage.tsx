@@ -28,8 +28,8 @@ export default function StudentQualificationPage({state,subject,student,students
  const term=state.config.terms.find(t=>t.id===periodId),periodName=periodId==='annual'?'Curs complet':term?.name||'';
  const all=Object.fromEntries(methods.map(m=>[m,periodGrades(state,subject,periodId,m)[student.id]]));
  const grade=all[method],automatic=periodGrades(state,subject,periodId,method,true)[student.id];
- const competencies=state.competencies.filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>order.compare(a.key,b.key));
- const criteria=state.criteria.filter(c=>competencies.some(ce=>ce.id===c.competencyId)).sort((a,b)=>order.compare(a.key,b.key));
+ const competencies=(locked?.competencies||state.competencies).filter(c=>c.subjectId===subject.id||c.subjectId===subject.parentId).sort((a,b)=>order.compare(a.key,b.key));
+ const criteria=(locked?.criteria||state.criteria).filter(c=>competencies.some(ce=>ce.id===c.competencyId)).sort((a,b)=>order.compare(a.key,b.key));
  const summary=activitySummary(activities,student.id,subject),annual=periodId==='annual'?annualProposals(state,subject,student.id,method):null;
  const editGrade=(column:QualificationColumn,g:ReportGrade|undefined,auto:ReportGrade|undefined)=><button type="button" disabled={!!locked} className="grade-cell-button" aria-label={`Modificar ${column.label} de ${student.name}`} onClick={()=>onEdit(column)}><GradeComparison grade={g} automatic={auto}/></button>;
  return <DetailPage title={<StudentName official state={state} student={student}/>} subtitle={`${subject.name} · ${periodName} · ${index+1}/${students.length}`} onBack={onBack} actions={<>
@@ -38,7 +38,7 @@ export default function StudentQualificationPage({state,subject,student,students
  </>}>
   <div className="ds-panel flex flex-wrap gap-3 items-end">
    <label className="ds-field flex-1">Alumne/a<select value={student.id} onChange={e=>onStudent(e.target.value)}>{students.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
-   <label className="ds-field">Període<select value={periodId} onChange={e=>onPeriod(e.target.value)}>{state.config.terms.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}<option value="annual">Curs complet</option></select></label>
+   <label className="ds-field">Període<select aria-label="Període" value={periodId} onChange={e=>onPeriod(e.target.value)}>{state.config.terms.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}<option value="annual">Curs complet</option></select></label>
    <label className="ds-field">Mètode<select value={method} onChange={e=>onMethod(e.target.value as CalculationMode)}>{methods.map(m=><option key={m} value={m}>{names[m]}</option>)}</select></label>
   </div>
   {state.config.terms.some(t=>t.isPreassessment&&t.parentTermId===periodId)&&<p className="text-sm text-slate-600">Aquest trimestre inclou la preavaluació i la resta del trimestre, sense duplicar activitats.</p>}
