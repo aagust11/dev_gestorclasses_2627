@@ -57,20 +57,22 @@ import {
 } from '../utils/gradeCalculations';
 
 interface ActivitatsViewProps {
+  initialSubjectId?:string;
+  onReturnToSession?:()=>void;
   state: AppState;
   onChangeState: (nextState: AppState,base?:AppState) => boolean | void;
 }
 
-export default function ActivitatsView({ state, onChangeState }: ActivitatsViewProps) {
+export default function ActivitatsView({ state, onChangeState, initialSubjectId, onReturnToSession }: ActivitatsViewProps) {
   const [showRecoveryTasks,setShowRecoveryTasks]=useState(false);
-  const [showOverview,setShowOverview]=useState(true);
+  const [showOverview,setShowOverview]=useState(!initialSubjectId);
   // 1. Get subjects with valid students
   const validSubjects = useMemo(() => {
     return state.subjects.filter(s => !s.isGeneral);
   }, [state.subjects]);
 
   const [selectedSubId, setSelectedSubId] = useState<string>(() => {
-    return validSubjects.find(s => !s.isParent)?.id || validSubjects[0]?.id || '';
+    return validSubjects.find(s=>s.id===initialSubjectId)?.id || validSubjects.find(s => !s.isParent)?.id || validSubjects[0]?.id || '';
   });
 
   const activeSubject = useMemo(() => {
@@ -886,6 +888,7 @@ const addDaysToDateStr = (dateStr: string, days: number): string => {
 
   return (
     <div id="section-curricular-activities" className="space-y-6">
+      {onReturnToSession&&<button className="ds-button" onClick={onReturnToSession}>← Tornar a la sessió</button>}
       <button className="ds-button" onClick={()=>setShowOverview(true)}>← Tornar al resum de classes</button>
       
       {/* 1. View Header with subject selection */}

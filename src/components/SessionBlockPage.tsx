@@ -5,7 +5,7 @@ import {diaryBlock,blockLogs,combineBlockLogs,effectiveSessionLogs,getDayBlocks,
 import {classroomName} from '../utils/studentNames';
 import {attendanceLabels} from '../utils/attendance';
 
-type Props={onOpenStudent?:(id:string)=>void;state:AppState;scheduleItemId:string;dateStr:string;onBackToTimeline:()=>void;onNavigateToSession:(id:string,date:string)=>void;onChangeState:(state:AppState,base?:AppState)=>boolean|void;onSaveSessionLog:(log:SessionLog)=>void};
+type Props={onOpenActivities?:(subjectId:string)=>void;onOpenStudent?:(id:string)=>void;state:AppState;scheduleItemId:string;dateStr:string;onBackToTimeline:()=>void;onNavigateToSession:(id:string,date:string)=>void;onChangeState:(state:AppState,base?:AppState)=>boolean|void;onSaveSessionLog:(log:SessionLog)=>void};
 export default function SessionBlockPage(p:Props){
   const visualBlock=getDayBlocks(p.state,p.dateStr).find(b=>b.id===p.scheduleItemId||b.memberIds.includes(p.scheduleItemId));
   if(!visualBlock)return <SessionView {...p}/>;
@@ -37,3 +37,4 @@ function Review(p:Props & {block:ReturnType<typeof getDayBlocks>[number];logs:Se
     {error&&<p role="alert">{error}</p>}<button className="ds-button" disabled={!ready} onClick={save}>Unificar i obrir el diari</button>
   </section>;
 }
+

@@ -1,0 +1,25 @@
+name: Validate session activity shortcuts
+on:
+  push:
+    branches: [work/session-activities, main]
+    paths: ['src/**', 'tests/**', 'scripts/session-activities-e2e.mjs', '.github/workflows/session-activities-test.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm install --prefix "$RUNNER_TEMP/aula-recovery-test" --no-package-lock playwright@1.58.2
+      - run: node "$RUNNER_TEMP/aula-recovery-test/node_modules/playwright/cli.js" install --with-deps chromium
+      - run: PLAYWRIGHT_MODULE="$RUNNER_TEMP/aula-recovery-test/node_modules/playwright" node --import tsx scripts/session-activities-e2e.mjs

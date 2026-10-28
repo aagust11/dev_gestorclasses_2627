@@ -1,3 +1,4 @@
+import ActivityInfoPage from './ActivityInfoPage';
 import {attendanceEntry,annotationEntry} from '../utils/sessionMutations';
 import BookmarkBar from './BookmarkBar';
 import {classroomName,searchableStudentName} from '../utils/studentNames';
@@ -43,6 +44,7 @@ import {
 } from '../utils/dateHelpers';
 
 interface SessionViewProps {
+  onOpenActivities?: (subjectId:string) => void;
   onOpenStudent?: (id:string) => void;
   state: AppState;
   displayStart?: string;
@@ -65,9 +67,11 @@ export default function SessionView({
   onNavigateToSession,
   onChangeState,
   onSaveSessionLog,
-  onOpenStudent
+  onOpenStudent,
+  onOpenActivities
 }: SessionViewProps) {
   // General notes & links states for general teacher tasks
+  const [activityInfoId,setActivityInfoId]=useState<string|null>(null);
   const [studentSearch, setStudentSearch] = useState('');
   const {sort,toggle}=useTableSort();
 
@@ -325,6 +329,9 @@ export default function SessionView({
     );
   }
 
+  const infoActivity=state.activities?.find(a=>a.id===activityInfoId);
+  if(infoActivity)return <ActivityInfoPage state={state} activity={infoActivity} onBack={()=>setActivityInfoId(null)} onOpenActivities={onOpenActivities?()=>onOpenActivities(subject.id):undefined}/>;
+
   // Attendance statistics
   const attendanceSummary=summarizeAttendance(students.map(s=>attendance[s.id]));
   const presentsCount=attendanceSummary.present, lateCount=attendanceSummary.late, absentCount=attendanceSummary.absent;
@@ -388,76 +395,13 @@ export default function SessionView({
         {/* Center/Right: Task indicators & Session navigation */}
         <div className="flex items-center flex-wrap gap-2.5">
           
-          {/* Ongoing Tasks Indicator (Hover to view) */}
-          {ongoingActivities.length > 0 && (
-            <div className="relative group">
-              <button
-                type="button"
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-800 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                title="Passa el cursor per veure les tasques en curs"
-              >
-                <ClipboardList className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-                <span>{ongoingActivities.length} {ongoingActivities.length === 1 ? 'tasca en curs' : 'tasques en curs'}</span>
-              </button>
-              
-              {/* Floating dropdown on hover */}
-              <div className="absolute right-0 top-full mt-1 w-80 bg-white rounded-xl shadow-xl border border-indigo-200 p-3 z-30 hidden group-hover:block animate-fadeIn">
-                <p className="text-[10.5px] font-extrabold uppercase text-indigo-800 tracking-wider mb-2 flex items-center gap-1.5">
-                  <ClipboardList className="w-3.5 h-3.5 text-indigo-600" />
-                  Tasques en curs durant aquesta sessió:
-                </p>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {ongoingActivities.map(act => (
-                    <div key={act.id} className="p-2.5 bg-slate-50 border border-slate-150 rounded-lg text-xs">
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="font-bold text-slate-800 truncate">{act.title}</span>
-                        <span className="text-[9.5px] font-mono font-bold bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded shrink-0">
-                          {act.code}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-500 mt-1.5 pt-1 border-t border-slate-200/50">
-                        <span>Pes: <strong>{act.weight}%</strong></span>
-                        <span className="text-indigo-700 font-semibold">Lliurament: {act.endDate}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {!subject.isGeneral&&onOpenActivities&&<button type="button" className="ds-button text-xs" onClick={()=>onOpenActivities(subject.id)}>Programació d’activitats</button>}
+          {[{title:'Activitats en curs',items:ongoingActivities},{title:'Últim dia abans del lliurament',items:lastDayActivities}].map(({title,items})=>items.length>0&&<details key={title} className="relative">
+            <summary className="cursor-pointer px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-800 text-xs font-bold">{title} ({items.length})</summary>
+            <div className="absolute right-0 top-full mt-1 w-80 max-w-[85vw] bg-white rounded-xl shadow-xl border border-indigo-200 p-2 z-30 max-h-72 overflow-y-auto">
+              {items.map(act=><button key={act.id} type="button" className="block w-full text-left rounded-lg p-2 hover:bg-indigo-50 focus:bg-indigo-50 text-xs" onClick={()=>setActivityInfoId(act.id)} aria-label={`Veure activitat ${act.code}: ${act.title}`}><strong>{act.code} · {act.title}</strong><span className="block text-slate-500 mt-1">Lliurament: {act.endDate} · Veure informació →</span></button>)}
             </div>
-          )}
-
-          {/* Last Day Before Delivery Alert (Icon & Warning) */}
-          {lastDayActivities.length > 0 && (
-            <div className="relative group">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold shadow-2xs animate-pulse cursor-pointer">
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>Últim dia abans de lliurament ({lastDayActivities.length})</span>
-              </div>
-
-              {/* Floating alert dropdown on hover */}
-              <div className="absolute right-0 top-full mt-1 w-84 bg-white rounded-xl shadow-xl border border-amber-300 p-3 z-30 hidden group-hover:block animate-fadeIn">
-                <p className="text-[10.5px] font-extrabold uppercase text-amber-900 tracking-wider mb-2 flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                  Última sessió abans del lliurament de tasca!
-                </p>
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                  {lastDayActivities.map(act => (
-                    <div key={act.id} className="p-2.5 bg-amber-50/70 border border-amber-200 rounded-lg text-xs">
-                      <div className="flex items-center justify-between gap-1 font-bold text-amber-950">
-                        <span className="truncate">{act.title}</span>
-                        <span className="text-[9.5px] font-mono bg-amber-200 text-amber-900 px-1.5 py-0.5 rounded shrink-0">
-                          {act.code}
-                        </span>
-                      </div>
-                      <p className="text-[10.5px] text-amber-800 mt-1">
-                        Aquesta és l'última classe programada abans de la data límit: <strong>{act.endDate}</strong>.
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          </details>)}
 
           {/* Prev / Next Session Buttons */}
           <div className="flex items-center gap-1.5 border-l border-slate-200 pl-2.5">

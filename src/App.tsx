@@ -53,6 +53,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<string>(()=>floatingView(window.location.search));
   
   // Sibling states for showing detailed individual Session Journal Logs
+  const [activitySubjectId,setActivitySubjectId]=useState<string|undefined>();
   const [selectedSessionSlotId, setSelectedSessionSlotId] = useState<string | null>(null);
   const [selectedSessionDate, setSelectedSessionDate] = useState<string | null>(null);
 
@@ -404,6 +405,7 @@ export default function App() {
         activeView={activeView === 'session_log' ? 'horari' : activeView}
         onViewChange={(view) => {
           setConfigSubjectId(null);
+          setActivitySubjectId(undefined);
           setActiveView(view);
           setSelectedSessionSlotId(null);
           setSelectedSessionDate(null);
@@ -472,6 +474,8 @@ export default function App() {
 
           {activeView === 'activitats' && (
             <ActivitatsView 
+              initialSubjectId={activitySubjectId}
+              onReturnToSession={activitySubjectId&&selectedSessionSlotId&&selectedSessionDate?()=>{setActiveView('session_log');setActivitySubjectId(undefined);}:undefined}
               state={localState}
               onChangeState={triggerStateUpdate}
             />
@@ -513,6 +517,7 @@ export default function App() {
                 setSelectedSessionDate(dt);
               }}
               onChangeState={triggerStateUpdate}
+              onOpenActivities={id=>{setActivitySubjectId(id);setActiveView('activitats');}}
               onOpenStudent={openStudent}
               onSaveSessionLog={(updatedLog) => {
                 // Find existing log
