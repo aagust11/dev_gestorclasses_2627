@@ -87,7 +87,7 @@ export default function Sidebar({
             </button>
           );
         })}
-        {window.top===window&&<button id="open-pip-window" className="block px-3 py-2.5 text-sm hover:text-white" onClick={async()=>{const url=new URL(window.location.href);url.search='';url.hash='';url.searchParams.set('view',activeView);const result=await openAulaPictureInPicture(url.href);setWindowError(result.ok?'':result.error);}}>Finestra flotant · Sempre visible</button>}
+        {typeof window!=='undefined'&&window.top===window&&<button id="open-pip-window" className="block px-3 py-2.5 text-sm hover:text-white" onClick={async()=>{const url=new URL(window.location.href);url.search='';url.hash='';url.searchParams.set('view',activeView);const result=await openAulaPictureInPicture(url.href);setWindowError(result.ok?'':result.error);}}>Finestra flotant · Sempre visible</button>}
         <button id="open-floating-window" className="block px-3 py-2.5 text-sm hover:text-white" onClick={()=>setWindowError(openFloatingWindow(activeView)?'':'Permet les finestres emergents d’Àula al navegador i torna-ho a provar.')}>Finestra independent ↗</button>
         {windowError&&<p role="alert" className="text-xs text-amber-200 px-3">{windowError}</p>}
         <a href={`${(import.meta as any).env?.BASE_URL||'./'}EXTENSIO_DESCARREGABLE/`} target="_blank" rel="noopener noreferrer" className="block px-3 py-2.5 text-sm hover:text-white">Extensió del navegador ↗</a>
