@@ -26,7 +26,7 @@ No s’instal·la automàticament des d’una web. La política d’un equip ges
 
 Només transporta el context horari i els noms, assistència i anotacions de la sessió seleccionada. No envia PSI, mesures de suport, comentaris privats ni l’AppState complet. Cap servidor extern rep dades.
 
-Permisos: `sidePanel`, `contextMenus` i el domini `https://aagust11.github.io/`. Chrome atorga permisos de host per origen; el content script i l’encaminament es restringeixen a `/dev_gestorclasses_2627/`. No demana `storage`, `tabs`, `all_urls`, ni llegeix el contingut de les altres pàgines.
+Permisos: `sidePanel`, `contextMenus`, `scripting` i el domini `https://aagust11.github.io/`. Chrome atorga permisos de host per origen; el content script i l’encaminament es restringeixen a `/dev_gestorclasses_2627/`. No demana `storage`, `tabs`, `all_urls`, ni llegeix el contingut de les altres pàgines.
 
 ## Actualització i desenvolupament
 
@@ -40,8 +40,8 @@ La llista s’ordena alfabèticament pel nom mostrat, respectant els accents i e
 
 La consulta mostra les dades ja carregades al navegador mentre es comprova el fitxer en segon pla, amb un avís durant la sincronització. Les modificacions mantenen la cua de desat i la comprovació del fitxer. «Obrir Àula» activa la web immediatament, sense esperar aquesta cua.
 
-## Finestra flotant (1.2.0)
-Al menú de la icona o al panell lateral, prem **Finestra flotant**. Obre Àula en una finestra independent, movible i redimensionable; si ja existeix, la porta al davant. Comparteix les dades i la coordinació de desat del mateix perfil. No requereix tenir Àula oberta i no afegeix permisos. No és una finestra sempre per damunt de les altres aplicacions. A la web també hi ha el botó al menú.
+## Finestra independent (introduïda a 1.2.0)
+Al menú de la icona o al panell lateral, prem **Finestra independent**. Obre Àula en una finestra independent, movible i redimensionable; si ja existeix, la porta al davant. Comparteix les dades i la coordinació de desat del mateix perfil. No requereix tenir Àula oberta i no afegeix permisos. No és una finestra sempre per damunt de les altres aplicacions. A la web també hi ha el botó al menú.
 
 Per actualitzar una instal·lació desempaquetada, descarrega el ZIP nou, substitueix la carpeta i prem **Torna a carregar** a `chrome://extensions` (o `edge://extensions`).
 

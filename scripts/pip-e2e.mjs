@@ -38,8 +38,8 @@ try{
  const other=await context.newPage();await other.goto('about:blank');await other.bringToFront();
  assert.equal(await owner.evaluate(()=>!!window.documentPictureInPicture.window&&!window.documentPictureInPicture.window.closed),true);
  await owner.evaluate(()=>window.documentPictureInPicture.window.document.querySelector('iframe').contentDocument.querySelector('#nav-item-qualificacions').click());
- await owner.waitForFunction(()=>window.documentPictureInPicture.window.document.querySelector('iframe').contentDocument.querySelector('textarea[aria-label^="Comentari del grup"]'));
- await owner.evaluate(()=>{const frame=window.documentPictureInPicture.window.document.querySelector('iframe'),input=frame.contentDocument.querySelector('textarea[aria-label^="Comentari del grup"]');Object.getOwnPropertyDescriptor(frame.contentWindow.HTMLTextAreaElement.prototype,'value').set.call(input,'Desat des de PiP');input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));});
+ await owner.waitForFunction(()=>window.documentPictureInPicture.window.document.querySelector('iframe').contentDocument.querySelector('textarea[placeholder^="Valoració global del grup"]'));
+ await owner.evaluate(()=>{const frame=window.documentPictureInPicture.window.document.querySelector('iframe'),input=frame.contentDocument.querySelector('textarea[placeholder^="Valoració global del grup"]');Object.getOwnPropertyDescriptor(frame.contentWindow.HTMLTextAreaElement.prototype,'value').set.call(input,'Desat des de PiP');input.dispatchEvent(new frame.contentWindow.Event('input',{bubbles:true}));});
  await owner.waitForFunction(()=>JSON.stringify(JSON.parse(localStorage.getItem('gestor_classes_app_state')).groupPeriodComments).includes('Desat des de PiP'));
  await owner.evaluate(()=>window.documentPictureInPicture.window.close());await owner.locator('#nav-item-qualificacions').click();
  await owner.getByRole('textbox',{name:/Comentari del grup/}).waitFor();assert.equal(await owner.getByRole('textbox',{name:/Comentari del grup/}).inputValue(),'Desat des de PiP');
