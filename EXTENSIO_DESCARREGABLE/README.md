@@ -44,3 +44,8 @@ La consulta mostra les dades ja carregades al navegador mentre es comprova el fi
 Al menú de la icona o al panell lateral, prem **Finestra flotant**. Obre Àula en una finestra independent, movible i redimensionable; si ja existeix, la porta al davant. Comparteix les dades i la coordinació de desat del mateix perfil. No requereix tenir Àula oberta i no afegeix permisos. No és una finestra sempre per damunt de les altres aplicacions. A la web també hi ha el botó al menú.
 
 Per actualitzar una instal·lació desempaquetada, descarrega el ZIP nou, substitueix la carpeta i prem **Torna a carregar** a `chrome://extensions` (o `edge://extensions`).
+
+## Sempre visible · Picture-in-Picture (1.3.0)
+El botó **Finestra flotant · Sempre visible** activa una finestra Picture-in-Picture real, com Meet, sobre les altres finestres. Mantén oberta la pestanya d’Àula que l’ha iniciat (pot estar en segon pla): el navegador tanca PiP quan es tanca aquesta pestanya. Si no estava oberta, l’extensió la crea. Si el navegador requereix un clic addicional, obre Àula i mostra **Activar finestra sempre visible**.
+
+La finestra carrega la mateixa aplicació i el mateix desat compartit, sense còpies pròpies de dades. Cal esperar que es desin els canvis abans de tancar-la, igual que a la web. El permís nou `scripting` només serveix per activar PiP a l’origen d’Àula, amb els permisos de domini ja existents. No llegeix altres webs. **Finestra independent** conserva l’opció anterior, que no queda sempre al davant. Compatible amb navegadors d’escriptori que ofereixin Document Picture-in-Picture; es mostra un missatge explícit si no està disponible.

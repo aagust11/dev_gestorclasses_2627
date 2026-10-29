@@ -27,13 +27,13 @@ try{
  await context.addInitScript(({state,origin})=>{if(location.origin===origin&&!localStorage.getItem('gestor_classes_app_state'))localStorage.setItem('gestor_classes_app_state',JSON.stringify(state));},{state,origin});
  const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker'),id=new URL(worker.url()).host;
  const popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup.html`);
- await popup.getByRole('button',{name:'Finestra flotant',exact:true}).click();
+ await popup.getByRole('button',{name:'Finestra independent',exact:true}).click();
  let floating;for(let i=0;i<150&&!floating;i++){floating=context.pages().find(p=>p.url()===APP+'?floating=1');if(!floating)await new Promise(r=>setTimeout(r,100));}assert.ok(floating,'Native floating page opens without waiting for data loading');
  await floating.waitForURL(APP+'?floating=1');await floating.locator('#nav-item-qualificacions').click();
  assert.equal(await floating.locator('#app-viewport').getAttribute('data-floating'),'true');
  let windows=await worker.evaluate(()=>chrome.windows.getAll());assert.equal(windows.filter(w=>w.type==='popup').length,1);
  // Opening again focuses the same native window instead of making duplicates.
- const again=await context.newPage();await again.goto(`chrome-extension://${id}/popup.html`);await again.getByRole('button',{name:'Finestra flotant',exact:true}).click();if(!again.isClosed())await again.waitForEvent('close');
+ const again=await context.newPage();await again.goto(`chrome-extension://${id}/popup.html`);await again.getByRole('button',{name:'Finestra independent',exact:true}).click();if(!again.isClosed())await again.waitForEvent('close');
  windows=await worker.evaluate(()=>chrome.windows.getAll());assert.equal(windows.filter(w=>w.type==='popup').length,1);
  // Use the group comment, shared between all methods and other app windows.
  await floating.getByRole('textbox',{name:/Comentari del grup/}).fill('Comentari des de finestra flotant');

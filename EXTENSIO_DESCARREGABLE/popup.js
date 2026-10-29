@@ -20,3 +20,5 @@ $('open').onclick=async()=>{try{const res=await chrome.runtime.sendMessage({chan
 $('retry').onclick=load;load();
 
 $('floating').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',floating:true}).then(r=>{if(!r.ok)throw Error(r.error);window.close();}).catch(e=>$('status').textContent=e.message);
+
+$('pip').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',pip:true}).then(r=>{if(!r.ok)throw Error(r.error);window.close();}).catch(e=>$('status').textContent=e.message);

@@ -1,3 +1,4 @@
+import {openAulaPictureInPicture} from './picture-in-picture.js';
 const APP='https://aagust11.github.io/dev_gestorclasses_2627/';
 let auxiliary=null,closeTimer=null,badgeTimer=null,tail=Promise.resolve();
 const clients=new Set();
@@ -70,6 +71,14 @@ async function openFloating(){
 }
 async function route(message){
   clearTimeout(closeTimer);
+  if(message.pip){
+    const tab=await appTab(true);auxiliary=null;
+    await chrome.tabs.update(tab.id,{autoDiscardable:false});
+    const results=await chrome.scripting.executeScript({target:{tabId:tab.id},world:'MAIN',func:openAulaPictureInPicture,args:[APP]});
+    const result=results[0]?.result||{ok:false,error:'No s’ha pogut obrir Picture-in-Picture.'};
+    if(result.needsClick){await chrome.tabs.update(tab.id,{active:true});await chrome.windows.update(tab.windowId,{focused:true});}
+    return result;
+  }
   if(message.floating)return openFloating();
   const tab=await appTab(!message.passive);
   if(!tab)return {ok:true,idle:true};
@@ -96,7 +105,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   }
   if(sender.id!==chrome.runtime.id||!sender.url?.startsWith(chrome.runtime.getURL(''))||message?.channel!=='aula-ui')return;
   // Navigation and read-only snapshots must never wait behind file I/O.
-  const independent=message.floating||message.open||readAction(message.request?.action);
+  const independent=message.pip||message.floating||message.open||readAction(message.request?.action);
   const operation=independent?route(message):tail.then(()=>route(message));if(!independent)tail=operation.catch(()=>{});
   operation.then(reply).catch(e=>reply({ok:false,error:e.message||'Connexió interrompuda. Comprova el resultat a Àula abans de repetir el canvi.'}));return true;
 });

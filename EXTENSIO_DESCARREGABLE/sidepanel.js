@@ -67,3 +67,5 @@ chrome.runtime.onMessage.addListener(message=>{if(message.channel==='aula-refres
 setInterval(()=>loadSession(true),15000);load();
 
 $('floating').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',floating:true}).then(r=>{if(!r.ok)throw Error(r.error);}).catch(e=>$('status').textContent=e.message);
+
+$('pip').onclick=()=>chrome.runtime.sendMessage({channel:'aula-ui',pip:true}).then(r=>{if(!r.ok)throw Error(r.error);}).catch(e=>$('status').textContent=e.message);
